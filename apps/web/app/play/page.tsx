@@ -17,6 +17,14 @@ const FEATURED: { id: string; time: string; inc: string; label: string; desc: st
 ];
 
 export default function PlayPage() {
+  return (
+    <React.Suspense fallback={<div className="px-14 pt-9 pb-12" />}>
+      <PlayPageInner />
+    </React.Suspense>
+  );
+}
+
+function PlayPageInner() {
   const { getToken } = useAuth();
   const router = useRouter();
   const search = useSearchParams();
