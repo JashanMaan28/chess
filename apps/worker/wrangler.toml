@@ -5,12 +5,12 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 # CORS allowed origins as comma-separated. Override per environment.
-ALLOWED_ORIGINS = "http://localhost:3000"
+ALLOWED_ORIGINS = "https://chess-web-zeta.vercel.app,http://localhost:3000"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "chess"
-database_id = "REPLACE_WITH_D1_ID"
+database_id = "459375e3-c66c-497e-9f58-0177c4b60bf9"
 migrations_dir = "migrations"
 
 [[durable_objects.bindings]]
