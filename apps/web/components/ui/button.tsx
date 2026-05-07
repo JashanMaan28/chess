@@ -9,20 +9,22 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-[var(--accent)] text-[var(--accent-fg)] hover:opacity-90 shadow-[0_0_20px_-4px_var(--accent)]",
+          "bg-[var(--fg)] text-[var(--bg)] border border-[var(--fg)] hover:opacity-90",
+        accent:
+          "bg-[var(--accent)] text-[var(--accent-fg)] border border-[var(--accent)] hover:brightness-105",
         destructive:
           "bg-[var(--danger)] text-white hover:opacity-90",
         outline:
-          "border border-[var(--border-strong)] bg-transparent hover:bg-[var(--bg-elev)]",
+          "border border-[var(--border)] bg-[var(--bg-elev)] text-[var(--fg)] hover:bg-[var(--bg-elev-2)]",
         secondary:
           "bg-[var(--bg-elev-2)] text-[var(--fg)] hover:bg-[var(--border)]",
-        ghost: "hover:bg-[var(--bg-elev)] text-[var(--fg)]",
+        ghost: "bg-transparent text-[color:var(--ink-2)] hover:bg-[var(--bg-elev-2)]",
         link: "text-[var(--accent)] underline-offset-4 hover:underline",
       },
       size: {
-        default: "h-10 px-4 py-2",
-        sm: "h-8 rounded-md px-3 text-xs",
-        lg: "h-12 rounded-md px-6 text-base",
+        default: "h-9 px-4 py-2 text-[13px]",
+        sm: "h-8 rounded-md px-3 text-[12px]",
+        lg: "h-11 rounded-md px-[22px] text-[14px]",
         icon: "h-9 w-9",
       },
     },

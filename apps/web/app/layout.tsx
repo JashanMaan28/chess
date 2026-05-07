@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
-import { Geist, JetBrains_Mono } from "next/font/google";
+import { Geist, JetBrains_Mono, Instrument_Serif } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SiteHeader } from "@/components/site-header";
 import { Toaster } from "sonner";
@@ -16,9 +16,16 @@ const mono = JetBrains_Mono({
   variable: "--font-mono-jb",
 });
 
+const serif = Instrument_Serif({
+  subsets: ["latin"],
+  weight: "400",
+  style: ["normal", "italic"],
+  variable: "--font-instrument-serif",
+});
+
 export const metadata: Metadata = {
-  title: "chess.edge — real-time chess on the edge",
-  description: "Production-grade multiplayer chess. Server-authoritative, hibernatable, fast.",
+  title: "Gambit — quiet, modern chess",
+  description: "Calibrated puzzles. Honest opponents. Quiet design.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -26,21 +33,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <ClerkProvider
       appearance={{
         variables: {
-          colorPrimary: "#22d3ee",
-          colorBackground: "#0a0e1a",
-          colorText: "#e5ecff",
-          colorInputBackground: "#0f1424",
-          colorInputText: "#e5ecff",
-          borderRadius: "0.5rem",
+          colorPrimary: "#1a1815",
+          colorBackground: "#faf8f3",
+          colorText: "#1a1815",
+          colorInputBackground: "#ffffff",
+          colorInputText: "#1a1815",
+          borderRadius: "0.375rem",
+          fontFamily: "var(--font-geist), system-ui, sans-serif",
         },
       }}
     >
-      <html lang="en" data-theme="midnight" suppressHydrationWarning>
-        <body className={`${geist.variable} ${mono.variable} font-sans antialiased min-h-screen`}>
+      <html lang="en" data-theme="gambit" suppressHydrationWarning>
+        <body
+          className={`${geist.variable} ${mono.variable} ${serif.variable} font-sans antialiased min-h-screen flex flex-col`}
+        >
           <ThemeProvider>
             <SiteHeader />
-            <main className="mx-auto max-w-7xl px-4 py-8">{children}</main>
-            <Toaster theme="dark" position="bottom-right" />
+            <main className="flex-1 flex flex-col">{children}</main>
+            <Toaster position="bottom-right" />
           </ThemeProvider>
         </body>
       </html>

@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 
-type Theme = "midnight" | "ember";
+type Theme = "gambit" | "ink";
 
 type Ctx = {
   theme: Theme;
@@ -11,10 +11,10 @@ type Ctx = {
 const ThemeContext = React.createContext<Ctx | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = React.useState<Theme>("midnight");
+  const [theme, setThemeState] = React.useState<Theme>("gambit");
 
   React.useEffect(() => {
-    const saved = (localStorage.getItem("theme") as Theme | null) || "midnight";
+    const saved = (localStorage.getItem("theme") as Theme | null) || "gambit";
     setThemeState(saved);
     document.documentElement.dataset.theme = saved;
   }, []);
@@ -36,12 +36,14 @@ export function useTheme() {
 
 export function ThemeSwitch() {
   const { theme, setTheme } = useTheme();
+  const next = theme === "gambit" ? "ink" : "gambit";
   return (
     <button
-      onClick={() => setTheme(theme === "midnight" ? "ember" : "midnight")}
-      className="text-xs font-mono uppercase tracking-wider px-3 py-1.5 rounded-md border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
+      onClick={() => setTheme(next)}
+      title={`Switch to ${next}`}
+      className="text-[11px] font-mono uppercase tracking-[0.1em] px-2.5 py-1.5 rounded-md border border-[var(--border)] hover:border-[var(--fg)] text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors"
     >
-      {theme === "midnight" ? "midnight" : "ember"}
+      {theme}
     </button>
   );
 }

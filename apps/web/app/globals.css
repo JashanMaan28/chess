@@ -3,63 +3,77 @@
 @theme {
   --font-sans: "Geist Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
 }
 
-/* ----- Theme variables (CSS-vars driven, switched by [data-theme]) ----- */
+/* ----- Gambit design tokens (warm cream + olive accent) ----- */
 
 :root,
-[data-theme="midnight"] {
-  --bg: #0a0e1a;
-  --bg-elev: #0f1424;
-  --bg-elev-2: #141a30;
-  --border: #1c2440;
-  --border-strong: #2a335a;
+[data-theme="gambit"] {
+  --bg: #faf8f3;
+  --bg-elev: #ffffff;
+  --bg-elev-2: #f3efe6;
+  --border: #e8e2d6;
+  --border-strong: #d4ccbb;
 
-  --fg: #e5ecff;
-  --fg-muted: #8a93b8;
-  --fg-subtle: #5b6489;
+  --fg: #1a1815;
+  --fg-muted: #87807a;
+  --fg-subtle: #b3aca3;
+  --ink-2: #3d362f;
 
-  --accent: #22d3ee;       /* cyan */
-  --accent-2: #a78bfa;     /* violet */
-  --accent-fg: #04101a;
-  --success: #34d399;
-  --danger: #f87171;
-  --warning: #fbbf24;
+  --accent: #687d3a;        /* olive */
+  --accent-2: #8aa055;      /* lighter olive */
+  --accent-soft: #eaecd8;   /* olive tint */
+  --accent-fg: #ffffff;
+  --success: #4a8a3a;
+  --danger: #b54a3a;
+  --warning: #c9923a;
 
-  --board-light: #2a3357;
-  --board-dark: #1a2240;
-  --board-highlight: rgba(34, 211, 238, 0.45);
-  --board-last-move: rgba(167, 139, 250, 0.30);
-  --board-check: rgba(248, 113, 113, 0.55);
+  --board-light: #ede4d0;
+  --board-dark: #b8a07e;
+  --board-light-alt: #f5efe1;
+  --board-dark-alt: #8b7355;
+  --board-highlight: rgba(202, 182, 90, 0.55);
+  --board-last-move: rgba(202, 182, 90, 0.40);
+  --board-check: rgba(181, 74, 58, 0.55);
 
-  --shadow-glow: 0 0 0 1px rgba(34, 211, 238, 0.25), 0 8px 30px rgba(34, 211, 238, 0.10);
+  --shadow-sm: 0 1px 2px rgba(26, 24, 21, 0.04), 0 1px 1px rgba(26, 24, 21, 0.03);
+  --shadow-md: 0 4px 14px rgba(26, 24, 21, 0.06), 0 1px 3px rgba(26, 24, 21, 0.04);
+  --shadow-lg: 0 18px 48px rgba(26, 24, 21, 0.10), 0 4px 12px rgba(26, 24, 21, 0.05);
+  --shadow-glow: 0 0 0 3px var(--accent-soft);
 }
 
-[data-theme="ember"] {
-  --bg: #0c0908;
-  --bg-elev: #14100e;
-  --bg-elev-2: #1d1714;
-  --border: #2a201c;
-  --border-strong: #3d2e27;
+/* Deep "ink" variant — same warm system, inverted contrast */
+[data-theme="ink"] {
+  --bg: #1a1815;
+  --bg-elev: #232019;
+  --bg-elev-2: #2c2820;
+  --border: #3a352c;
+  --border-strong: #4a4338;
 
-  --fg: #fef6e8;
-  --fg-muted: #b8a394;
-  --fg-subtle: #7a6859;
+  --fg: #faf8f3;
+  --fg-muted: #a89f93;
+  --fg-subtle: #6f685e;
+  --ink-2: #ddd6c8;
 
-  --accent: #f59e0b;
-  --accent-2: #fb923c;
-  --accent-fg: #1a0e02;
-  --success: #84cc16;
-  --danger: #ef4444;
-  --warning: #fbbf24;
+  --accent: #a8be6f;
+  --accent-2: #c2d490;
+  --accent-soft: #2f3424;
+  --accent-fg: #1a1815;
+  --success: #7ab16d;
+  --danger: #d97766;
+  --warning: #e0b06b;
 
-  --board-light: #d4a574;
-  --board-dark: #8b5a3c;
-  --board-highlight: rgba(245, 158, 11, 0.50);
-  --board-last-move: rgba(251, 146, 60, 0.32);
-  --board-check: rgba(239, 68, 68, 0.55);
+  --board-light: #4a4338;
+  --board-dark: #2c2820;
+  --board-highlight: rgba(168, 190, 111, 0.40);
+  --board-last-move: rgba(168, 190, 111, 0.28);
+  --board-check: rgba(217, 119, 102, 0.55);
 
-  --shadow-glow: 0 0 0 1px rgba(245, 158, 11, 0.25), 0 8px 30px rgba(245, 158, 11, 0.10);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.40);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.50);
+  --shadow-glow: 0 0 0 3px var(--accent-soft);
 }
 
 @theme inline {
@@ -69,20 +83,20 @@
   --color-card-foreground: var(--fg);
   --color-popover: var(--bg-elev);
   --color-popover-foreground: var(--fg);
-  --color-primary: var(--accent);
-  --color-primary-foreground: var(--accent-fg);
+  --color-primary: var(--fg);
+  --color-primary-foreground: var(--bg);
   --color-secondary: var(--bg-elev-2);
   --color-secondary-foreground: var(--fg);
   --color-muted: var(--bg-elev-2);
   --color-muted-foreground: var(--fg-muted);
-  --color-accent: var(--accent-2);
+  --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-fg);
   --color-destructive: var(--danger);
-  --color-destructive-foreground: var(--fg);
+  --color-destructive-foreground: var(--bg);
   --color-border: var(--border);
   --color-input: var(--border);
   --color-ring: var(--accent);
-  --radius: 0.625rem;
+  --radius: 0.5rem;
 }
 
 * {
@@ -94,6 +108,7 @@ body {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-sans);
+  letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -103,7 +118,96 @@ body {
   color: var(--accent-fg);
 }
 
-/* Subtle ambient grid for landing */
+/* Display serif utility */
+.font-serif { font-family: var(--font-serif); }
+.font-mono { font-family: var(--font-mono); }
+
+/* Display heading — Instrument Serif at large size, tight tracking */
+.h-display {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(40px, 5vw, 56px);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+/* "Eyebrow" mono labels above headlines */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--fg-muted);
+}
+
+/* Chip / pill */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-elev-2);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2, var(--fg));
+  white-space: nowrap;
+}
+.chip-green { background: var(--accent-soft); color: var(--accent); }
+.chip-red   { background: #f7e1dd; color: var(--danger); }
+.chip-amber { background: #f6ead4; color: var(--warning); }
+[data-theme="ink"] .chip-red   { background: #3a221d; color: var(--danger); }
+[data-theme="ink"] .chip-amber { background: #3a2e1a; color: var(--warning); }
+.chip-dot::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Quick-play card — used on lobby */
+.qp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elev);
+  cursor: pointer;
+  transition: transform .15s, box-shadow .15s, border-color .15s;
+  text-align: left;
+}
+.qp-card:hover {
+  border-color: var(--fg);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+.qp-card[data-active="true"] {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-glow);
+}
+
+/* Tabular numbers for clocks / stats */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Move/notation list */
+.movelist .row {
+  display: grid;
+  grid-template-columns: 28px 1fr 1fr;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.movelist .row:hover { background: var(--bg-elev-2); }
+.movelist .num { color: var(--fg-muted); }
+.movelist .ply { padding: 2px 6px; border-radius: 3px; }
+.movelist .ply-current { background: var(--fg); color: var(--bg); }
+
+/* Subtle ambient grid (kept for landing variants) */
 .grid-bg {
   background-image:
     linear-gradient(to right, color-mix(in oklab, var(--border) 60%, transparent) 1px, transparent 1px),
@@ -111,15 +215,6 @@ body {
   background-size: 48px 48px;
   background-position: -1px -1px;
   mask-image: radial-gradient(ellipse 60% 60% at 50% 35%, black 30%, transparent 80%);
-}
-
-/* Neon glow utility */
-.neon-glow {
-  box-shadow: var(--shadow-glow);
-}
-
-.font-mono {
-  font-family: var(--font-mono);
 }
 
 /* Scrollbar */
