@@ -1,0 +1,30 @@
+name = "chess-worker"
+main = "src/index.ts"
+compatibility_date = "2025-04-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# CORS allowed origins as comma-separated. Override per environment.
+ALLOWED_ORIGINS = "http://localhost:3000"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "chess"
+database_id = "REPLACE_WITH_D1_ID"
+migrations_dir = "migrations"
+
+[[durable_objects.bindings]]
+name = "GAME_ROOM"
+class_name = "GameRoomDO"
+
+[[durable_objects.bindings]]
+name = "MATCHMAKING"
+class_name = "MatchmakingDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameRoomDO", "MatchmakingDO"]
+
+[env.production]
+name = "chess-worker"
+vars = { ALLOWED_ORIGINS = "https://your-app.vercel.app" }

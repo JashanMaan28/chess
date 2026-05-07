@@ -1,0 +1,16 @@
+node_modules
+.pnpm-store
+.next
+out
+dist
+.wrangler
+.dev.vars
+.env
+.env.local
+.env.*.local
+.vercel
+.turbo
+.DS_Store
+*.log
+coverage
+.cache
