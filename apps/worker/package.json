@@ -1,0 +1,31 @@
+{
+  "name": "@chess/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "build": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply chess --local",
+    "db:migrate:remote": "wrangler d1 migrations apply chess --remote"
+  },
+  "dependencies": {
+    "@chess/shared": "workspace:*",
+    "@clerk/backend": "^1.21.6",
+    "chess.js": "^1.0.0-beta.8",
+    "drizzle-orm": "^0.36.4",
+    "hono": "^4.6.13",
+    "nanoid": "^5.0.9"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "drizzle-kit": "^0.30.0",
+    "typescript": "^5.6.3",
+    "wrangler": "^3.95.0"
+  }
+}
