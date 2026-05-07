@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { API_URL } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { ProfileActions } from "@/components/profile-actions";
 
 type Profile = {
   user: {
@@ -95,10 +96,10 @@ export default async function ProfilePage({
             <span className="chip chip-green">Blitz {user.eloBlitz}</span>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline">Share</Button>
+        <div className="flex gap-2 flex-wrap">
+          <ProfileActions username={user.username} />
           <Link href={`/u/${user.username}/games`}>
-            <Button>All games</Button>
+            <Button variant="outline">All games</Button>
           </Link>
         </div>
       </div>

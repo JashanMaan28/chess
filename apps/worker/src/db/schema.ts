@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, index, primaryKey } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("users", {
   clerkId: text("clerk_id").primaryKey(),
@@ -8,6 +8,12 @@ export const users = sqliteTable("users", {
   eloRapid: integer("elo_rapid").notNull().default(1200),
   gamesPlayed: integer("games_played").notNull().default(0),
   createdAt: integer("created_at").notNull(),
+  level: text("level"),
+  preferredTc: text("preferred_tc"),
+  puzzleRating: integer("puzzle_rating").notNull().default(1200),
+  puzzlesSolved: integer("puzzles_solved").notNull().default(0),
+  puzzlesFailed: integer("puzzles_failed").notNull().default(0),
+  onboardedAt: integer("onboarded_at"),
 });
 
 export const games = sqliteTable(
@@ -47,6 +53,37 @@ export const friendInvites = sqliteTable("friend_invites", {
   gameId: text("game_id"),
 });
 
+export const follows = sqliteTable(
+  "follows",
+  {
+    followerId: text("follower_id").notNull(),
+    followeeId: text("followee_id").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.followerId, t.followeeId] }),
+    followeeIdx: index("idx_follows_followee").on(t.followeeId),
+  })
+);
+
+export const puzzleAttempts = sqliteTable(
+  "puzzle_attempts",
+  {
+    userId: text("user_id").notNull(),
+    puzzleId: text("puzzle_id").notNull(),
+    solved: integer("solved").notNull(),
+    ratingBefore: integer("rating_before").notNull(),
+    ratingAfter: integer("rating_after").notNull(),
+    attemptedAt: integer("attempted_at").notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.puzzleId] }),
+    userTimeIdx: index("idx_puzzle_attempts_user_time").on(t.userId, t.attemptedAt),
+  })
+);
+
 export type User = typeof users.$inferSelect;
 export type Game = typeof games.$inferSelect;
 export type FriendInvite = typeof friendInvites.$inferSelect;
+export type Follow = typeof follows.$inferSelect;
+export type PuzzleAttempt = typeof puzzleAttempts.$inferSelect;

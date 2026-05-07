@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { SignedIn, SignedOut, UserButton, SignInButton } from "@clerk/nextjs";
 import { ThemeSwitch } from "./theme-provider";
 import { Button } from "./ui/button";
+import { SearchDialog, SearchTrigger } from "./search-dialog";
 
 const links = [
   { href: "/", key: "play", label: "Play" },
@@ -61,13 +62,8 @@ export function SiteHeader() {
         </nav>
 
         <div className="ml-auto flex items-center gap-3">
-          <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 border border-[var(--border)] rounded-md bg-[var(--bg-elev)] text-[12.5px] text-[var(--fg-muted)] w-[220px]">
-            <span aria-hidden className="text-[13px]">{"⌕"}</span>
-            <span className="truncate">Search players, openings…</span>
-            <kbd className="ml-auto font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-elev-2)] text-[var(--fg-muted)]">
-              {"⌘"}K
-            </kbd>
-          </div>
+          <SearchTrigger />
+          <SearchDialog />
           <ThemeSwitch />
           <SignedOut>
             <SignInButton>
