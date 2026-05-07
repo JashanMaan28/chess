@@ -2,16 +2,24 @@
   "name": "chess-app",
   "private": true,
   "version": "0.1.0",
-  "packageManager": "pnpm@9.12.0",
+  "packageManager": "bun@1.1.38",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev:web": "pnpm --filter @chess/web dev",
-    "dev:worker": "pnpm --filter @chess/worker dev",
-    "build": "pnpm -r build",
-    "lint": "pnpm -r lint",
-    "typecheck": "pnpm -r typecheck",
-    "deploy:worker": "pnpm --filter @chess/worker deploy"
+    "dev:web": "bun --filter @chess/web dev",
+    "dev:worker": "bun --filter @chess/worker dev",
+    "build": "bun --filter '*' run build",
+    "lint": "bun --filter '*' run lint",
+    "typecheck": "bun --filter '*' run typecheck",
+    "deploy:worker": "bun --filter @chess/worker deploy"
   },
   "devDependencies": {
-    "typescript": "^5.6.3"
-  }
+    "@types/bun": "latest",
+    "typescript": "^5.6.3",
+    "wrangler": "^4.90.0"
+  },
+  "module": "index.ts",
+  "type": "module"
 }

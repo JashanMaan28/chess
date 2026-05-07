@@ -6,7 +6,7 @@ Production-grade multiplayer chess. Frontend on Vercel, all real-time game state
 
 - **Frontend**: Next.js 15 App Router (TypeScript strict), Tailwind v4, shadcn/ui, `react-chessboard`, `chess.js` (UX-only), Clerk auth.
 - **Backend**: Cloudflare Workers + Hono router, Durable Objects (`GameRoomDO`, `MatchmakingDO`), D1 + Drizzle ORM, `@clerk/backend` for networkless JWT verification.
-- **Shared**: pnpm workspace; `@chess/shared` for protocol + time controls + types.
+- **Shared**: Bun workspace; `@chess/shared` for protocol + time controls + types.
 
 ## Repo layout
 
@@ -22,19 +22,19 @@ chess-app/
 ## Local development
 
 ```bash
-pnpm install
+bun install
 
 # In apps/worker copy .dev.vars.example → .dev.vars, fill Clerk secrets.
 # Create local D1 db and apply migrations:
-pnpm --filter @chess/worker exec wrangler d1 create chess   # paste id into wrangler.toml
-pnpm --filter @chess/worker db:migrate:local
+bun --filter @chess/worker exec wrangler d1 create chess   # paste id into wrangler.toml
+bun --filter @chess/worker run db:migrate:local
 
 # Start the Worker (port 8787):
-pnpm dev:worker
+bun run dev:worker
 
 # In another terminal, copy apps/web/.env.local.example → apps/web/.env.local
 # and fill Clerk + worker URLs.
-pnpm dev:web
+bun run dev:web
 ```
 
 Open http://localhost:3000.
