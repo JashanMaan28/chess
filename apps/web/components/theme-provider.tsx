@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { ContrastIcon, type ContrastIconHandle } from "./icons/contrast-icon";
 
 type Theme = "gambit" | "ink";
 
@@ -37,13 +38,43 @@ export function useTheme() {
 export function ThemeSwitch() {
   const { theme, setTheme } = useTheme();
   const next = theme === "gambit" ? "ink" : "gambit";
+  const iconRef = React.useRef<ContrastIconHandle>(null);
+
+  // The icon's "animate" state rotates the filled half 180°. We bind it to
+  // the active theme so the visible orientation reflects what's currently on,
+  // and hover-previews the other theme by flipping to the opposite state.
+  React.useEffect(() => {
+    if (!iconRef.current) return;
+    if (theme === "ink") iconRef.current.startAnimation();
+    else iconRef.current.stopAnimation();
+  }, [theme]);
+
+  const onEnter = React.useCallback(() => {
+    if (!iconRef.current) return;
+    if (theme === "ink") iconRef.current.stopAnimation();
+    else iconRef.current.startAnimation();
+  }, [theme]);
+
+  const onLeave = React.useCallback(() => {
+    if (!iconRef.current) return;
+    if (theme === "ink") iconRef.current.startAnimation();
+    else iconRef.current.stopAnimation();
+  }, [theme]);
+
   return (
     <button
+      type="button"
       onClick={() => setTheme(next)}
       title={`Switch to ${next}`}
-      className="text-[11px] font-mono uppercase tracking-[0.1em] px-2.5 py-1.5 rounded-md border border-[var(--border)] hover:border-[var(--fg)] text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors"
+      aria-label={`Switch theme (currently ${theme}, click for ${next})`}
+      className="grid place-items-center size-9 rounded-md border border-[var(--border)] hover:border-[var(--fg)] text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors"
     >
-      {theme}
+      <ContrastIcon
+        ref={iconRef}
+        size={18}
+        onMouseEnter={onEnter}
+        onMouseLeave={onLeave}
+      />
     </button>
   );
 }
