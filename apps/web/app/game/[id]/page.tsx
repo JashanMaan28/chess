@@ -18,7 +18,7 @@ import type {
   ColorOrSpectator,
   ChatMsg,
 } from "@chess/shared/protocol";
-import { Download, Flag, Handshake, Loader2, Wifi, WifiOff } from "lucide-react";
+import { Download, Flag, Handshake, Loader2, Wifi, WifiOff, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
@@ -31,6 +31,7 @@ export default function GamePage() {
   const [state, setState] = React.useState<GameState | null>(null);
   const [status, setStatus] = React.useState<"connecting" | "open" | "closed">("connecting");
   const [selectedPly, setSelectedPly] = React.useState<number>(-2); // -2 = follow live
+  const [selectedSquare, setSelectedSquare] = React.useState<string | null>(null);
   const [endDialogOpen, setEndDialogOpen] = React.useState(false);
   const [endInfo, setEndInfo] = React.useState<{
     result: string;
@@ -216,13 +217,112 @@ export default function GamePage() {
     URL.revokeObjectURL(url);
   };
 
-  // Highlight last move squares
+  // ----- Highlight last move squares -----
   const lastMove = state && state.moves.length > 0 ? state.moves[state.moves.length - 1] : null;
+  // When scrubbing, "last move" is the move at selectedPly (if any).
+  const scrubbedLastMove = React.useMemo(() => {
+    if (!state) return null;
+    if (selectedPly === -2 || selectedPly === state.moves.length - 1) return lastMove;
+    if (selectedPly < 0) return null;
+    return state.moves[selectedPly] ?? null;
+  }, [state, selectedPly, lastMove]);
   const squareStyles: Record<string, React.CSSProperties> = {};
-  if (lastMove) {
-    squareStyles[lastMove.from] = { background: "var(--board-last-move)" };
-    squareStyles[lastMove.to] = { background: "var(--board-last-move)" };
+  if (scrubbedLastMove) {
+    squareStyles[scrubbedLastMove.from] = { background: "var(--board-last-move)" };
+    squareStyles[scrubbedLastMove.to] = { background: "var(--board-last-move)" };
   }
+
+  // ----- Legal-move overlay for the currently selected piece -----
+  const { legalMoves, captureMoves } = React.useMemo(() => {
+    if (!selectedSquare || !state) return { legalMoves: [] as string[], captureMoves: [] as string[] };
+    try {
+      const c = new Chess(state.fen);
+      // Use renderFen so review-mode highlights match the displayed position.
+      const fen = (() => {
+        if (selectedPly === -2 || selectedPly === state.moves.length - 1) return state.fen;
+        if (selectedPly === -1) return new Chess().fen();
+        const cc = new Chess();
+        for (let i = 0; i <= selectedPly; i++) {
+          const m = state.moves[i]!;
+          cc.move({ from: m.from, to: m.to, promotion: m.promo });
+        }
+        return cc.fen();
+      })();
+      const cc = new Chess(fen);
+      const moves = cc.moves({ square: selectedSquare as never, verbose: true }) as Array<{
+        to: string;
+        flags: string;
+      }>;
+      const targets = moves.map((m) => m.to);
+      const captures = moves.filter((m) => /[ce]/.test(m.flags)).map((m) => m.to);
+      void c;
+      return { legalMoves: targets, captureMoves: captures };
+    } catch {
+      return { legalMoves: [], captureMoves: [] };
+    }
+  }, [selectedSquare, state, selectedPly]);
+
+  // ----- Click-to-move handler -----
+  const onSquareClick = React.useCallback(
+    (sq: string) => {
+      if (!state) return;
+      // If we're scrubbing in review mode, just preview legal moves at that ply.
+      const reviewing = state.result !== "*" || !draggable;
+      const c = new Chess(renderFen);
+      const piece = c.get(sq as never) as { color: "w" | "b"; type: string } | null;
+
+      // Click-on-target → submit move (only when it's the user's turn).
+      if (selectedSquare && legalMoves.includes(sq) && !reviewing) {
+        const ok = tryMove(selectedSquare, sq);
+        setSelectedSquare(null);
+        if (!ok) return;
+        return;
+      }
+      // Click-on-own-piece (live) or any piece (reviewing) → highlight.
+      if (piece) {
+        if (reviewing || piece.color === state.you) {
+          setSelectedSquare((cur) => (cur === sq ? null : sq));
+          return;
+        }
+      }
+      // Empty square or opponent piece → clear.
+      setSelectedSquare(null);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state, selectedSquare, legalMoves, renderFen]
+  );
+
+  // Clear selection if the displayed position changes (e.g. opponent moved).
+  React.useEffect(() => {
+    setSelectedSquare(null);
+  }, [renderFen]);
+
+  // Keyboard scrubbing in review mode.
+  React.useEffect(() => {
+    if (!state || state.result === "*") return;
+    const total = state.moves.length;
+    if (total === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      const tgt = e.target as HTMLElement | null;
+      if (tgt && (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA")) return;
+      const cur = selectedPly === -2 ? total - 1 : selectedPly;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setSelectedPly(Math.max(-1, cur - 1));
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setSelectedPly(Math.min(total - 1, cur + 1));
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        setSelectedPly(-1);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        setSelectedPly(-2);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [state, selectedPly]);
 
   if (!state) {
     return (
@@ -241,118 +341,175 @@ export default function GamePage() {
   const bottomColor: Color = state.you === "b" ? "b" : "w";
   const topPlayer = topColor === "w" ? state.players.white : state.players.black;
   const bottomPlayer = bottomColor === "w" ? state.players.white : state.players.black;
+  const isOver = state.result !== "*";
+
+  // ----- Review scrub controls -----
+  const totalPly = state.moves.length;
+  const currentPly = selectedPly === -2 ? totalPly - 1 : selectedPly;
+  const goToPly = (p: number) => setSelectedPly(Math.max(-1, Math.min(totalPly - 1, p)));
+  const onPrev = () => goToPly(currentPly - 1);
+  const onNext = () => goToPly(currentPly + 1);
+  const onStart = () => goToPly(-1);
+  const onEnd = () => setSelectedPly(-2);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6 lg:gap-8">
-      {/* Board column */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <PlayerCard player={topPlayer} color={topColor} active={state.turn === topColor} />
-          <Clock
-            ms={clocks[topColor]}
-            active={state.turn === topColor && state.result === "*"}
-            low={clocks[topColor] < 20_000}
-          />
-        </div>
-        <Board
-          fen={renderFen}
-          orientation={orientation}
-          arePiecesDraggable={draggable}
-          onMove={tryMove}
-          customSquareStyles={squareStyles}
+    <div className="px-6 lg:px-10 py-6 lg:py-8 max-w-[1280px] mx-auto w-full">
+      {isOver && state.result && (
+        <ResultBanner
+          result={state.result}
+          termination={state.termination}
+          you={state.you}
+          white={state.players.white?.username ?? "white"}
+          black={state.players.black?.username ?? "black"}
         />
-        <div className="flex items-center justify-between gap-3">
-          <PlayerCard
-            player={bottomPlayer}
-            color={bottomColor}
-            active={state.turn === bottomColor}
-          />
-          <Clock
-            ms={clocks[bottomColor]}
-            active={state.turn === bottomColor && state.result === "*"}
-            low={clocks[bottomColor] < 20_000}
-          />
-        </div>
+      )}
 
-        {/* Status bar */}
-        <div className="flex items-center justify-between text-xs font-mono uppercase tracking-wider text-[var(--fg-muted)] pt-2">
-          <div className="flex items-center gap-2">
-            {status === "open" ? (
-              <>
-                <Wifi className="size-3.5 text-[var(--success)]" /> connected
-              </>
-            ) : status === "connecting" ? (
-              <>
-                <Loader2 className="size-3.5 animate-spin" /> connecting
-              </>
-            ) : (
-              <>
-                <WifiOff className="size-3.5 text-[var(--danger)]" /> reconnecting
-              </>
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6 lg:gap-8">
+        {/* Board column */}
+        <div className="flex flex-col gap-3 max-w-[640px] w-full mx-auto lg:mx-0">
+          <div className="flex items-center justify-between gap-3">
+            <PlayerCard player={topPlayer} color={topColor} active={state.turn === topColor && !isOver} />
+            {!isOver && (
+              <Clock
+                ms={clocks[topColor]}
+                active={state.turn === topColor && state.result === "*"}
+                low={clocks[topColor] < 20_000}
+              />
             )}
           </div>
-          <div>
-            {state.you === "w" ? "you · white" : state.you === "b" ? "you · black" : "spectating"}
+          <Board
+            fen={renderFen}
+            orientation={orientation}
+            arePiecesDraggable={draggable}
+            onMove={tryMove}
+            customSquareStyles={squareStyles}
+            selectedSquare={selectedSquare}
+            legalMoves={legalMoves}
+            captureSquares={captureMoves}
+            onSquareClick={onSquareClick}
+          />
+          <div className="flex items-center justify-between gap-3">
+            <PlayerCard
+              player={bottomPlayer}
+              color={bottomColor}
+              active={state.turn === bottomColor && !isOver}
+            />
+            {!isOver && (
+              <Clock
+                ms={clocks[bottomColor]}
+                active={state.turn === bottomColor && state.result === "*"}
+                low={clocks[bottomColor] < 20_000}
+              />
+            )}
           </div>
+
+          {/* Review scrubber for ended games */}
+          {isOver && totalPly > 0 && (
+            <div className="flex items-center justify-between gap-2 mt-1 px-3 py-2 rounded-md border border-[var(--border)] bg-[var(--bg-elev)]">
+              <div className="font-mono text-[11px] text-[var(--fg-muted)] uppercase tracking-[0.1em]">
+                Move {Math.floor((currentPly + 2) / 2) || 0} of {Math.ceil(totalPly / 2)}
+              </div>
+              <div className="flex items-center gap-1">
+                <Button size="sm" variant="ghost" onClick={onStart} title="Start" className="h-8 w-8 p-0">
+                  <ChevronsLeft className="size-4" />
+                </Button>
+                <Button size="sm" variant="ghost" onClick={onPrev} title="Prev" className="h-8 w-8 p-0">
+                  <ChevronLeft className="size-4" />
+                </Button>
+                <Button size="sm" variant="ghost" onClick={onNext} title="Next" className="h-8 w-8 p-0">
+                  <ChevronRight className="size-4" />
+                </Button>
+                <Button size="sm" variant="ghost" onClick={onEnd} title="End" className="h-8 w-8 p-0">
+                  <ChevronsRight className="size-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Status bar — only meaningful while live */}
+          {!isOver && (
+            <div className="flex items-center justify-between text-xs font-mono uppercase tracking-wider text-[var(--fg-muted)] pt-2">
+              <div className="flex items-center gap-2">
+                {status === "open" ? (
+                  <>
+                    <Wifi className="size-3.5 text-[var(--success)]" /> connected
+                  </>
+                ) : status === "connecting" ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" /> connecting
+                  </>
+                ) : (
+                  <>
+                    <WifiOff className="size-3.5 text-[var(--danger)]" /> reconnecting
+                  </>
+                )}
+              </div>
+              <div>
+                {state.you === "w" ? "you · white" : state.you === "b" ? "you · black" : "spectating"}
+              </div>
+            </div>
+          )}
         </div>
-      </div>
 
-      {/* Sidebar */}
-      <div className="flex flex-col gap-4 lg:max-h-[calc(100vh-7rem)]">
-        <Card className="flex-1 flex flex-col min-h-[260px] overflow-hidden">
-          <MoveList
-            moves={state.moves}
-            selectedPly={
-              selectedPly === -2 ? state.moves.length - 1 : selectedPly
-            }
-            onSelect={(p) => setSelectedPly(p)}
-          />
-        </Card>
-
-        {isPlayer && state.result === "*" && (
-          <Card>
-            <div className="p-3 flex flex-wrap gap-2">
-              {drawOfferFromOpponent ? (
-                <>
-                  <Badge variant="default">Draw offered</Badge>
-                  <Button size="sm" variant="default" onClick={acceptDraw}>
-                    Accept
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={declineDraw}>
-                    Decline
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button size="sm" variant="outline" onClick={offerDraw}>
-                    <Handshake className="size-3.5" /> Offer draw
-                  </Button>
-                  <Button size="sm" variant="destructive" onClick={resign}>
-                    <Flag className="size-3.5" /> Resign
-                  </Button>
-                </>
-              )}
-            </div>
+        {/* Sidebar */}
+        <div className="flex flex-col gap-4 lg:max-h-[calc(100vh-7rem)]">
+          <Card className="flex-1 flex flex-col min-h-[260px] overflow-hidden">
+            <MoveList
+              moves={state.moves}
+              selectedPly={
+                selectedPly === -2 ? state.moves.length - 1 : selectedPly
+              }
+              onSelect={(p) => setSelectedPly(p)}
+            />
           </Card>
-        )}
 
-        {state.result !== "*" && (
-          <Card>
-            <div className="p-3">
-              <Button onClick={downloadPgn} variant="outline" className="w-full">
-                <Download className="size-3.5" /> Download PGN
-              </Button>
-            </div>
-          </Card>
-        )}
+          {isPlayer && !isOver && (
+            <Card>
+              <div className="p-3 flex flex-wrap gap-2">
+                {drawOfferFromOpponent ? (
+                  <>
+                    <Badge variant="default">Draw offered</Badge>
+                    <Button size="sm" variant="default" onClick={acceptDraw}>
+                      Accept
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={declineDraw}>
+                      Decline
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button size="sm" variant="outline" onClick={offerDraw}>
+                      <Handshake className="size-3.5" /> Offer draw
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={resign}>
+                      <Flag className="size-3.5" /> Resign
+                    </Button>
+                  </>
+                )}
+              </div>
+            </Card>
+          )}
 
-        <Card className="flex-1 flex flex-col min-h-[200px] overflow-hidden">
-          <ChatPanel
-            messages={state.chat as ChatMsg[]}
-            canSend={isPlayer}
-            onSend={sendChat}
-          />
-        </Card>
+          {isOver && (
+            <Card>
+              <div className="p-3">
+                <Button onClick={downloadPgn} variant="outline" className="w-full">
+                  <Download className="size-3.5" /> Download PGN
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          {!isOver && (
+            <Card className="flex-1 flex flex-col min-h-[200px] overflow-hidden">
+              <ChatPanel
+                messages={state.chat as ChatMsg[]}
+                canSend={isPlayer}
+                onSend={sendChat}
+              />
+            </Card>
+          )}
+        </div>
       </div>
 
       <Dialog open={endDialogOpen} onOpenChange={setEndDialogOpen}>
@@ -410,6 +567,87 @@ export default function GamePage() {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function ResultBanner({
+  result,
+  termination,
+  you,
+  white,
+  black,
+}: {
+  result: string;
+  termination: string | null | undefined;
+  you: ColorOrSpectator;
+  white: string;
+  black: string;
+}) {
+  const isDraw = result === "1/2-1/2";
+  const winnerColor: Color | null = result === "1-0" ? "w" : result === "0-1" ? "b" : null;
+  const winnerName = winnerColor === "w" ? white : winnerColor === "b" ? black : null;
+  const loserName = winnerColor === "w" ? black : winnerColor === "b" ? white : null;
+  let myOutcome: "won" | "lost" | "draw" | null = null;
+  if (you === "w" || you === "b") {
+    if (isDraw) myOutcome = "draw";
+    else if (winnerColor === you) myOutcome = "won";
+    else myOutcome = "lost";
+  }
+  const headline = isDraw
+    ? "Draw"
+    : myOutcome === "won"
+      ? "You won"
+      : myOutcome === "lost"
+        ? "You lost"
+        : `${winnerName} won`;
+  const sub =
+    termination
+      ? `By ${termination.replace(/_/g, " ")}`
+      : winnerColor
+        ? `${winnerName} defeated ${loserName}`
+        : "Game complete";
+
+  const accent =
+    myOutcome === "won"
+      ? "var(--accent)"
+      : myOutcome === "lost"
+        ? "var(--danger)"
+        : "var(--fg-muted)";
+
+  return (
+    <div className="rounded-[10px] border border-[var(--border)] bg-[var(--bg-elev)] px-5 py-4 mb-5 flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex items-center gap-4 min-w-0">
+        <div
+          aria-hidden
+          className="flex-shrink-0 size-10 rounded-md flex items-center justify-center"
+          style={{
+            background: "var(--bg-elev-2)",
+            border: `1px solid ${accent}`,
+            color: accent,
+          }}
+        >
+          <span className="font-serif text-[22px] leading-none">
+            {isDraw ? "½" : winnerColor === "w" ? "♔" : "♚"}
+          </span>
+        </div>
+        <div className="min-w-0">
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--fg-muted)]">
+            Game review
+          </div>
+          <div className="text-[20px] font-medium tracking-tight" style={{ color: accent }}>
+            {headline}
+          </div>
+          <div className="text-[12.5px] text-[var(--fg-muted)] truncate">{sub}</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 font-mono text-[12px] text-[var(--fg-muted)]">
+        <span>{white}</span>
+        <span className="text-[var(--fg)] font-medium">
+          {result.replace("1/2-1/2", "½-½")}
+        </span>
+        <span>{black}</span>
+      </div>
     </div>
   );
 }
