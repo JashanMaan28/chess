@@ -1,12 +1,13 @@
 "use client";
 import * as React from "react";
 import Link from "next/link";
-import { useAuth, SignedIn, SignedOut } from "@clerk/nextjs";
+import { useAuth, useUser, SignedIn, SignedOut } from "@clerk/nextjs";
 import { TIME_CONTROLS } from "@chess/shared/time-controls";
 import { Button } from "@/components/ui/button";
 import { MiniBoard } from "@/components/chess/mini-board";
 import { ChallengeDialog } from "@/components/challenge-dialog";
 import { api } from "@/lib/api";
+import { useCachedFetch } from "@/lib/use-cached-fetch";
 
 const QUICK_PLAY: Array<{
   id: string;
@@ -170,38 +171,60 @@ function SignedOutLanding() {
 }
 
 function SignedInLobby() {
-  const { isLoaded, isSignedIn, getToken } = useAuth();
-  const [me, setMe] = React.useState<{ username: string; onboardedAt: number | null } | null>(null);
-  const [recent, setRecent] = React.useState<RecentGame[] | null>(null);
-  const [follows, setFollows] = React.useState<Follow[] | null>(null);
-  const [opponents, setOpponents] = React.useState<Opponent[] | null>(null);
+  const { isLoaded, isSignedIn, getToken, userId } = useAuth();
+  const { user } = useUser();
 
-  React.useEffect(() => {
-    if (!isLoaded || !isSignedIn) return;
-    let cancelled = false;
-    (async () => {
+  const ready = isLoaded && isSignedIn && !!userId;
+  const meKey = ready ? `me:${userId}` : null;
+  const recentKey = ready ? `recent-games:${userId}` : null;
+  const followsKey = ready ? `follows:${userId}` : null;
+  const opponentsKey = ready ? `recent-opponents:${userId}` : null;
+
+  const meQ = useCachedFetch<{ username: string; onboardedAt: number | null }>(
+    meKey,
+    async () => {
       const token = await getToken();
-      if (!token) return;
-      try {
-        const [meRes, gamesRes, followsRes, opponentsRes] = await Promise.all([
-          api<{ username: string; onboardedAt: number | null }>("/me", { token }),
-          api<{ games: RecentGame[] }>("/me/recent-games", { token }),
-          api<{ follows: Follow[] }>("/me/follows", { token }),
-          api<{ opponents: Opponent[] }>("/me/recent-opponents", { token }),
-        ]);
-        if (cancelled) return;
-        setMe(meRes);
-        setRecent(gamesRes.games);
-        setFollows(followsRes.follows);
-        setOpponents(opponentsRes.opponents);
-      } catch {
-        /* worker may be down — keep skeleton */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoaded, isSignedIn, getToken]);
+      return api("/me", { token });
+    },
+    { ttlMs: 5 * 60_000, refetchOnFocus: true }
+  );
+  const recentQ = useCachedFetch<{ games: RecentGame[] }>(
+    recentKey,
+    async () => {
+      const token = await getToken();
+      return api("/me/recent-games", { token });
+    },
+    { ttlMs: 60_000, refetchOnFocus: true }
+  );
+  const followsQ = useCachedFetch<{ follows: Follow[] }>(
+    followsKey,
+    async () => {
+      const token = await getToken();
+      return api("/me/follows", { token });
+    },
+    { ttlMs: 2 * 60_000, refetchOnFocus: true }
+  );
+  const opponentsQ = useCachedFetch<{ opponents: Opponent[] }>(
+    opponentsKey,
+    async () => {
+      const token = await getToken();
+      return api("/me/recent-opponents", { token });
+    },
+    { ttlMs: 5 * 60_000, refetchOnFocus: true }
+  );
+
+  const me = meQ.data;
+  const recent = recentQ.data?.games ?? null;
+  const follows = followsQ.data?.follows ?? null;
+  const opponents = opponentsQ.data?.opponents ?? null;
+
+  // Prefer Clerk's editable display name (firstName, then username) over the
+  // auto-generated D1 handle. The handle is still used for /u/[username] URLs.
+  const displayName =
+    user?.firstName ||
+    user?.username ||
+    me?.username ||
+    "friend";
 
   const today = new Date().toLocaleDateString(undefined, {
     weekday: "long",
@@ -222,10 +245,7 @@ function SignedInLobby() {
           <div className="eyebrow mb-1.5">{today}</div>
           <h1 className="h-display">
             {greeting},{" "}
-            <em className="font-serif italic">
-              {me?.username ?? "friend"}
-            </em>
-            .
+            <em className="font-serif italic">{displayName}</em>.
           </h1>
         </div>
         <div className="flex items-center gap-3">

@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/nextjs";
 import { Button } from "./ui/button";
 import { ChallengeDialog } from "./challenge-dialog";
 import { api } from "@/lib/api";
+import { clearCache } from "@/lib/cache";
 import { toast } from "sonner";
 
 type Status = {
@@ -75,6 +76,9 @@ export function ProfileActions({
           mutual: status.followsYou,
         });
       }
+      // The home page's friends list reflects this; bust its cache so the
+      // next visit shows the updated set.
+      if (userId) clearCache(`follows:${userId}`);
     } catch {
       toast.error("Could not update follow.");
     } finally {

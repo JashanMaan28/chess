@@ -5,6 +5,7 @@ import { useAuth, useUser } from "@clerk/nextjs";
 import { TIME_CONTROLS, TIME_CONTROL_BY_ID } from "@chess/shared/time-controls";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { clearCache } from "@/lib/cache";
 import { toast } from "sonner";
 
 type LevelId = "beginner" | "casual" | "club" | "strong";
@@ -33,7 +34,7 @@ const STEPS = ["Welcome", "Skill level", "Time control", "Done"] as const;
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const { getToken, isLoaded, isSignedIn, userId } = useAuth();
   const { user } = useUser();
 
   const [step, setStep] = React.useState(0);
@@ -69,6 +70,8 @@ export default function OnboardingPage() {
       if (typeof window !== "undefined") {
         window.sessionStorage.setItem("onboarded", "yes");
       }
+      // Invalidate /me so the home page reflects onboardedAt immediately.
+      if (userId) clearCache(`me:${userId}`);
       goTo(3);
     } catch {
       toast.error("Could not save preferences. Try again.");
