@@ -4,6 +4,7 @@ import { Geist, JetBrains_Mono, Instrument_Serif } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SiteHeader } from "@/components/site-header";
 import { OnboardingGate } from "@/components/onboarding-gate";
+import { PageTransition } from "@/components/page-transition";
 import { NotificationsProvider } from "@/lib/notifications";
 import { Toaster } from "sonner";
 import "./globals.css";
@@ -54,6 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <OnboardingGate />
               <SiteHeader />
               <main className="flex-1 flex flex-col">{children}</main>
+              <PageTransition />
               <Toaster position="bottom-right" />
             </NotificationsProvider>
           </ThemeProvider>
