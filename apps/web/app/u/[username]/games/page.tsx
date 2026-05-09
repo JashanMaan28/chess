@@ -11,6 +11,8 @@ type Game = {
   blackId: string;
   whiteUsername: string;
   blackUsername: string;
+  whiteFirstName: string;
+  blackFirstName: string;
   result: string;
   termination: string | null;
   timeControl: string;
@@ -21,13 +23,20 @@ type Game = {
   blackEloAfter: number | null;
 };
 
+type GamesResponse = {
+  page: number;
+  limit: number;
+  user: { username: string; firstName: string };
+  games: Game[];
+};
+
 async function getGames(username: string, tc: string | undefined, page: number) {
   const params = new URLSearchParams({ page: String(page) });
   if (tc) params.set("tc", tc);
   const res = await fetch(`${API_URL}/u/${username}/games?${params}`, { cache: "no-store" });
   if (res.status === 404) return null;
   if (!res.ok) return null;
-  return res.json() as Promise<{ page: number; limit: number; games: Game[] }>;
+  return res.json() as Promise<GamesResponse>;
 }
 
 function shortDate(ms: number | null): string {
@@ -76,7 +85,8 @@ export default async function GameHistoryPage({
   const page = Math.max(1, Number(sp.page || "1"));
   const data = await getGames(username, sp.tc, page);
   if (!data) return notFound();
-  const initial = username.slice(0, 2).toUpperCase();
+  const displayName = data.user.firstName || username;
+  const initial = displayName.slice(0, 2).toUpperCase();
   const empty = data.games.length === 0;
 
   return (
@@ -92,7 +102,7 @@ export default async function GameHistoryPage({
         </div>
         <div className="flex-1 min-w-0">
           <div className="eyebrow mb-1">Game history</div>
-          <h1 className="h-display">{username}</h1>
+          <h1 className="h-display">{displayName}</h1>
         </div>
         <Link href={`/u/${username}`}>
           <Button variant="outline">Back to profile</Button>
@@ -143,8 +153,11 @@ export default async function GameHistoryPage({
           <ul>
             {data.games.map((g, i) => {
               const res = resolveResult(g, username);
-              const opp = g.whiteUsername === username ? g.blackUsername : g.whiteUsername;
-              const myColor = g.whiteUsername === username ? "white" : "black";
+              const iAmWhite = g.whiteUsername === username;
+              const opp = iAmWhite ? g.blackUsername : g.whiteUsername;
+              const oppFirstName = iAmWhite ? g.blackFirstName : g.whiteFirstName;
+              const oppDisplay = oppFirstName || opp;
+              const myColor = iAmWhite ? "white" : "black";
               const delta = eloDelta(g, username);
               const cls =
                 res === "W"
@@ -177,7 +190,7 @@ export default async function GameHistoryPage({
                           href={`/u/${opp}`}
                           className="hover:underline"
                         >
-                          {opp || "—"}
+                          {oppDisplay || "—"}
                         </Link>
                       </span>
                       <span className="font-mono text-[11px] px-1.5 py-0.5 rounded border border-[var(--border)] text-[var(--fg-muted)]">

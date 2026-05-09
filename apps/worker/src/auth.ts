@@ -41,6 +41,17 @@ export async function authenticate(
     where: eq(schema.users.clerkId, payload.sub),
   });
   if (existing) {
+    // Lazy backfill: rows created before the first_name column exists carry
+    // null. Fetch once from Clerk and persist — empty string when Clerk has
+    // no first name, so we don't refetch on every request.
+    if (existing.firstName == null) {
+      const clerk = createClerkClient({ secretKey: env.CLERK_SECRET_KEY });
+      const u = await clerk.users.getUser(payload.sub);
+      await db
+        .update(schema.users)
+        .set({ firstName: u.firstName ?? "" })
+        .where(eq(schema.users.clerkId, payload.sub));
+    }
     return { clerkId: existing.clerkId, username: existing.username };
   }
 
@@ -56,6 +67,7 @@ export async function authenticate(
   await db.insert(schema.users).values({
     clerkId: payload.sub,
     username,
+    firstName: u.firstName ?? "",
     createdAt: Date.now(),
   });
 

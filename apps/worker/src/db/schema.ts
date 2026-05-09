@@ -14,6 +14,7 @@ export const users = sqliteTable("users", {
   puzzlesSolved: integer("puzzles_solved").notNull().default(0),
   puzzlesFailed: integer("puzzles_failed").notNull().default(0),
   onboardedAt: integer("onboarded_at"),
+  firstName: text("first_name"),
 });
 
 export const games = sqliteTable(

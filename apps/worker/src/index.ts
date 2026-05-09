@@ -676,19 +676,27 @@ app.get("/u/:username/games", async (c) => {
   const idArr = Array.from(ids);
   const userRows = idArr.length
     ? await db
-        .select({ clerkId: schema.users.clerkId, username: schema.users.username })
+        .select({
+          clerkId: schema.users.clerkId,
+          username: schema.users.username,
+          firstName: schema.users.firstName,
+        })
         .from(schema.users)
         .where(or(...idArr.map((id) => eq(schema.users.clerkId, id))))
     : [];
   const nameById = new Map(userRows.map((r) => [r.clerkId, r.username]));
+  const firstNameById = new Map(userRows.map((r) => [r.clerkId, r.firstName ?? ""]));
 
   return c.json({
     page,
     limit,
+    user: { username: u.username, firstName: u.firstName ?? "" },
     games: rows.map((g) => ({
       ...g,
       whiteUsername: nameById.get(g.whiteId) || "",
       blackUsername: nameById.get(g.blackId) || "",
+      whiteFirstName: firstNameById.get(g.whiteId) || "",
+      blackFirstName: firstNameById.get(g.blackId) || "",
     })),
   });
 });
