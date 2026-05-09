@@ -82,8 +82,47 @@ export const puzzleAttempts = sqliteTable(
   })
 );
 
+export const challenges = sqliteTable(
+  "challenges",
+  {
+    id: text("id").primaryKey(),
+    fromUserId: text("from_user_id").notNull(),
+    toUserId: text("to_user_id").notNull(),
+    timeControl: text("time_control").notNull(),
+    initialMs: integer("initial_ms").notNull(),
+    incrementMs: integer("increment_ms").notNull(),
+    colorPref: text("color_pref").notNull(),
+    status: text("status").notNull().default("pending"),
+    createdAt: integer("created_at").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+    gameId: text("game_id"),
+  },
+  (t) => ({
+    toStatusIdx: index("idx_challenges_to_status").on(t.toUserId, t.status, t.createdAt),
+    fromStatusIdx: index("idx_challenges_from_status").on(t.fromUserId, t.status, t.createdAt),
+  })
+);
+
+export const notifications = sqliteTable(
+  "notifications",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    kind: text("kind").notNull(),
+    payload: text("payload").notNull(),
+    readAt: integer("read_at"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => ({
+    userTimeIdx: index("idx_notifications_user_time").on(t.userId, t.createdAt),
+    userUnreadIdx: index("idx_notifications_user_unread").on(t.userId, t.readAt, t.createdAt),
+  })
+);
+
 export type User = typeof users.$inferSelect;
 export type Game = typeof games.$inferSelect;
 export type FriendInvite = typeof friendInvites.$inferSelect;
 export type Follow = typeof follows.$inferSelect;
 export type PuzzleAttempt = typeof puzzleAttempts.$inferSelect;
+export type Challenge = typeof challenges.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;

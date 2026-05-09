@@ -142,6 +142,11 @@ export default function GamePage() {
   const liveClocks = (): { w: number; b: number } => {
     const a = clockAnchor.current;
     if (!a || state?.result !== "*") return state?.clocks || { w: 0, b: 0 };
+    // Pregame: clocks are frozen on the server until both players have moved
+    // (moves.length >= 2). Mirror that here so the displayed clock doesn't
+    // tick visibly while no time is actually being deducted.
+    const pregame = (state?.moves.length ?? 0) < 2;
+    if (pregame) return a.serverClocks;
     const elapsed = Date.now() - a.at;
     return {
       w: a.turn === "w" ? Math.max(0, a.serverClocks.w - elapsed) : a.serverClocks.w,
@@ -353,7 +358,7 @@ export default function GamePage() {
   const onEnd = () => setSelectedPly(-2);
 
   return (
-    <div className="px-6 lg:px-10 py-6 lg:py-8 max-w-[1280px] mx-auto w-full">
+    <div className="px-3 sm:px-6 lg:px-10 py-4 sm:py-6 lg:py-8 max-w-[1280px] mx-auto w-full">
       {isOver && state.result && (
         <ResultBanner
           result={state.result}
@@ -366,7 +371,7 @@ export default function GamePage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6 lg:gap-8">
         {/* Board column */}
-        <div className="flex flex-col gap-3 max-w-[640px] w-full mx-auto lg:mx-0">
+        <div className="flex flex-col gap-3 w-full max-w-full lg:max-w-[720px] mx-auto lg:mx-0 min-w-0">
           <div className="flex items-center justify-between gap-3">
             <PlayerCard player={topPlayer} color={topColor} active={state.turn === topColor && !isOver} />
             {!isOver && (

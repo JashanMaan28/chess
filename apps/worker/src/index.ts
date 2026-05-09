@@ -4,11 +4,35 @@ import { nanoid } from "nanoid";
 import { eq, desc, and, or, isNull, like, inArray, sql } from "drizzle-orm";
 import type { Env } from "./env";
 import { authenticate, bearerToken, verifySessionToken } from "./auth";
-import { getDb, schema } from "./db/client";
+import { getDb, schema, type DBClient } from "./db/client";
 import {
-  TIME_CONTROL_BY_ID,
   bucketFor,
+  resolveTimeControl,
+  type TimeControlBucket,
 } from "@chess/shared/time-controls";
+
+/** Map any bucket to the elo column we track (we don't yet store eloClassical). */
+function eloKeyForBucket(bucket: TimeControlBucket): "eloBullet" | "eloBlitz" | "eloRapid" {
+  if (bucket === "bullet") return "eloBullet";
+  if (bucket === "blitz") return "eloBlitz";
+  // Classical folds into rapid for elo purposes.
+  return "eloRapid";
+}
+
+async function pushNotification(
+  db: DBClient,
+  userId: string,
+  kind: string,
+  payload: Record<string, unknown>
+) {
+  await db.insert(schema.notifications).values({
+    id: nanoid(12),
+    userId,
+    kind,
+    payload: JSON.stringify(payload),
+    createdAt: Date.now(),
+  });
+}
 
 export { GameRoomDO } from "./do/GameRoom";
 export { MatchmakingDO } from "./do/Matchmaking";
@@ -75,7 +99,7 @@ app.post("/me/onboard", authMw, async (c) => {
   const allowedLevels = new Set(["beginner", "casual", "club", "strong"]);
   const level = body.level && allowedLevels.has(body.level) ? body.level : null;
   const preferredTc =
-    body.preferredTc && TIME_CONTROL_BY_ID[body.preferredTc]
+    body.preferredTc && resolveTimeControl(body.preferredTc)
       ? body.preferredTc
       : null;
   if (!level || !preferredTc) return c.json({ error: "bad_input" }, 400);
@@ -198,14 +222,21 @@ app.post("/users/:username/follow", authMw, async (c) => {
   });
   if (!tu) return c.json({ error: "not_found" }, 404);
   if (tu.clerkId === u.clerkId) return c.json({ error: "cannot_follow_self" }, 400);
-  await db
+  // Idempotent insert; only push a notification on first-time follow.
+  const inserted = await db
     .insert(schema.follows)
     .values({
       followerId: u.clerkId,
       followeeId: tu.clerkId,
       createdAt: Date.now(),
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning();
+  if (inserted.length > 0) {
+    await pushNotification(db, tu.clerkId, "new_follower", {
+      fromUsername: u.username,
+    });
+  }
   return c.json({ ok: true, following: true });
 });
 
@@ -482,14 +513,19 @@ app.get("/u/:username", async (c) => {
   });
   if (!u) return c.json({ error: "not_found" }, 404);
 
-  const recent = await db
+  // We pull a wider window than the home "recent games" call so we can compute
+  // an honest activity heatmap and rating sparklines from finished games.
+  const HISTORY_LIMIT = 200;
+  const allRecent = await db
     .select()
     .from(schema.games)
     .where(or(eq(schema.games.whiteId, u.clerkId), eq(schema.games.blackId, u.clerkId)))
     .orderBy(desc(schema.games.endedAt))
-    .limit(10);
+    .limit(HISTORY_LIMIT);
 
-  // Hydrate opponent usernames
+  const recent = allRecent.slice(0, 10);
+
+  // Hydrate opponent usernames for the visible recent block.
   const ids = new Set<string>();
   for (const g of recent) {
     ids.add(g.whiteId);
@@ -504,16 +540,79 @@ app.get("/u/:username", async (c) => {
     : [];
   const nameById = new Map(userRows.map((r) => [r.clerkId, r.username]));
 
+  // Aggregate over the full recent window (up to 200 games).
   let wins = 0,
     losses = 0,
     draws = 0;
-  for (const g of recent) {
+  let whiteWins = 0,
+    whiteDraws = 0,
+    whiteLosses = 0,
+    whiteGames = 0;
+  let blackWins = 0,
+    blackDraws = 0,
+    blackLosses = 0,
+    blackGames = 0;
+
+  // Activity heatmap: 84 days (12 weeks). Map day-bucket → count.
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const todayUtc = Math.floor(Date.now() / DAY_MS) * DAY_MS;
+  const daySpan = 84;
+  const oldestDay = todayUtc - (daySpan - 1) * DAY_MS;
+  const heatmap = new Array<number>(daySpan).fill(0);
+
+  // Rating sparkline points per bucket, oldest-first (we'll reverse later).
+  const ratingPoints: Record<"bullet" | "blitz" | "rapid", number[]> = {
+    bullet: [],
+    blitz: [],
+    rapid: [],
+  };
+
+  for (const g of allRecent) {
     if (!g.endedAt || g.result === "*") continue;
     const isWhite = g.whiteId === u.clerkId;
-    if (g.result === "1/2-1/2") draws++;
-    else if ((g.result === "1-0" && isWhite) || (g.result === "0-1" && !isWhite)) wins++;
+    const isDraw = g.result === "1/2-1/2";
+    const won =
+      (g.result === "1-0" && isWhite) || (g.result === "0-1" && !isWhite);
+
+    if (isDraw) draws++;
+    else if (won) wins++;
     else losses++;
+
+    if (isWhite) {
+      whiteGames++;
+      if (isDraw) whiteDraws++;
+      else if (won) whiteWins++;
+      else whiteLosses++;
+    } else {
+      blackGames++;
+      if (isDraw) blackDraws++;
+      else if (won) blackWins++;
+      else blackLosses++;
+    }
+
+    // Heatmap bucketing.
+    if (g.endedAt >= oldestDay) {
+      const idx = Math.floor((g.endedAt - oldestDay) / DAY_MS);
+      if (idx >= 0 && idx < daySpan) heatmap[idx] = (heatmap[idx] || 0) + 1;
+    }
+
+    // Rating sparkline — derived from elo_after on each finished game in this
+    // user's bucket. We classify by the timeControl text we stored.
+    const tc = resolveTimeControl(g.timeControl);
+    const bucket = tc?.bucket ?? bucketFor(g.initialMs, g.incrementMs);
+    const sparkBucket: "bullet" | "blitz" | "rapid" =
+      bucket === "bullet" ? "bullet" : bucket === "blitz" ? "blitz" : "rapid";
+    const after = isWhite ? g.whiteEloAfter : g.blackEloAfter;
+    if (after != null) ratingPoints[sparkBucket].push(after);
   }
+
+  // We collected newest→oldest from the DB query; flip per-bucket so the
+  // sparkline reads left-to-right in chronological order.
+  const sparklines = {
+    bullet: ratingPoints.bullet.slice().reverse(),
+    blitz: ratingPoints.blitz.slice().reverse(),
+    rapid: ratingPoints.rapid.slice().reverse(),
+  };
 
   return c.json({
     user: {
@@ -525,6 +624,16 @@ app.get("/u/:username", async (c) => {
       createdAt: u.createdAt,
     },
     record: { wins, losses, draws },
+    byColor: {
+      white: { wins: whiteWins, draws: whiteDraws, losses: whiteLosses, games: whiteGames },
+      black: { wins: blackWins, draws: blackDraws, losses: blackLosses, games: blackGames },
+    },
+    activity: {
+      days: daySpan,
+      oldestDay,
+      counts: heatmap,
+    },
+    sparklines,
     recent: recent.map((g) => ({
       ...g,
       whiteUsername: nameById.get(g.whiteId) || "",
@@ -609,7 +718,7 @@ app.post("/friend/invite", authMw, async (c) => {
     timeControl: string;
     color: "white" | "black" | "random";
   };
-  const tc = TIME_CONTROL_BY_ID[body.timeControl];
+  const tc = resolveTimeControl(body.timeControl);
   if (!tc) return c.json({ error: "bad_time_control" }, 400);
   if (!["white", "black", "random"].includes(body.color))
     return c.json({ error: "bad_color" }, 400);
@@ -681,7 +790,7 @@ app.post("/friend/:code/accept", authMw, async (c) => {
   ]);
   if (!wu || !bu) return c.json({ error: "user_missing" }, 500);
   const bucket = bucketFor(inv.initialMs, inv.incrementMs);
-  const eloKey = bucket === "bullet" ? "eloBullet" : bucket === "blitz" ? "eloBlitz" : "eloRapid";
+  const eloKey = eloKeyForBucket(bucket);
 
   const gameId = nanoid(12);
   // Mark invite used (atomically — single row update)
@@ -722,6 +831,429 @@ app.post("/friend/:code/accept", authMw, async (c) => {
   return c.json({ gameId });
 });
 
+// ------- Direct user-to-user challenges -------
+//
+// A challenge targets a specific user (by username). They get a push notification
+// (delivered via `/me/notifications` polling) and can accept/decline. On accept,
+// a GameRoom is spawned and the inviter receives a `challenge_accepted`
+// notification carrying the new gameId — used to auto-redirect them.
+
+const CHALLENGE_TTL_MS = 10 * 60_000;
+
+app.post("/challenges", authMw, async (c) => {
+  const u = c.get("user");
+  const body = (await c.req.json()) as {
+    toUsername: string;
+    timeControl: string;
+    color: "white" | "black" | "random";
+  };
+  const tc = resolveTimeControl(body.timeControl);
+  if (!tc) return c.json({ error: "bad_time_control" }, 400);
+  if (!["white", "black", "random"].includes(body.color))
+    return c.json({ error: "bad_color" }, 400);
+  if (!body.toUsername) return c.json({ error: "missing_recipient" }, 400);
+
+  const db = getDb(c.env.DB);
+  const target = await db.query.users.findFirst({
+    where: eq(schema.users.username, body.toUsername),
+  });
+  if (!target) return c.json({ error: "user_not_found" }, 404);
+  if (target.clerkId === u.clerkId)
+    return c.json({ error: "cannot_challenge_self" }, 400);
+
+  // Cancel any prior pending challenge from me to this user — only one in
+  // flight at a time so the receiver's UI doesn't pile up duplicates.
+  const prior = await db
+    .select()
+    .from(schema.challenges)
+    .where(
+      and(
+        eq(schema.challenges.fromUserId, u.clerkId),
+        eq(schema.challenges.toUserId, target.clerkId),
+        eq(schema.challenges.status, "pending")
+      )
+    );
+  if (prior.length > 0) {
+    await db
+      .update(schema.challenges)
+      .set({ status: "cancelled" })
+      .where(
+        and(
+          eq(schema.challenges.fromUserId, u.clerkId),
+          eq(schema.challenges.toUserId, target.clerkId),
+          eq(schema.challenges.status, "pending")
+        )
+      );
+  }
+
+  const now = Date.now();
+  const id = nanoid(14);
+  await db.insert(schema.challenges).values({
+    id,
+    fromUserId: u.clerkId,
+    toUserId: target.clerkId,
+    timeControl: tc.id,
+    initialMs: tc.initialMs,
+    incrementMs: tc.incrementMs,
+    colorPref: body.color,
+    status: "pending",
+    createdAt: now,
+    expiresAt: now + CHALLENGE_TTL_MS,
+  });
+
+  await pushNotification(db, target.clerkId, "challenge_received", {
+    challengeId: id,
+    fromUsername: u.username,
+    toUsername: target.username,
+    timeControl: tc.id,
+  });
+
+  return c.json({
+    id,
+    expiresAt: now + CHALLENGE_TTL_MS,
+    timeControl: tc.id,
+  });
+});
+
+app.get("/me/challenges/incoming", authMw, async (c) => {
+  const u = c.get("user");
+  const db = getDb(c.env.DB);
+  // Auto-expire stale ones first.
+  await db
+    .update(schema.challenges)
+    .set({ status: "expired" })
+    .where(
+      and(
+        eq(schema.challenges.toUserId, u.clerkId),
+        eq(schema.challenges.status, "pending"),
+        sql`${schema.challenges.expiresAt} < ${Date.now()}`
+      )
+    );
+  const rows = await db
+    .select()
+    .from(schema.challenges)
+    .where(
+      and(
+        eq(schema.challenges.toUserId, u.clerkId),
+        eq(schema.challenges.status, "pending")
+      )
+    )
+    .orderBy(desc(schema.challenges.createdAt))
+    .limit(20);
+  const fromIds = Array.from(new Set(rows.map((r) => r.fromUserId)));
+  const fromRows = fromIds.length
+    ? await db
+        .select({ clerkId: schema.users.clerkId, username: schema.users.username })
+        .from(schema.users)
+        .where(inArray(schema.users.clerkId, fromIds))
+    : [];
+  const nameById = new Map(fromRows.map((r) => [r.clerkId, r.username]));
+  return c.json({
+    challenges: rows.map((r) => ({
+      ...r,
+      fromUsername: nameById.get(r.fromUserId) || "",
+      toUsername: u.username,
+    })),
+  });
+});
+
+app.get("/me/challenges/outgoing", authMw, async (c) => {
+  const u = c.get("user");
+  const db = getDb(c.env.DB);
+  await db
+    .update(schema.challenges)
+    .set({ status: "expired" })
+    .where(
+      and(
+        eq(schema.challenges.fromUserId, u.clerkId),
+        eq(schema.challenges.status, "pending"),
+        sql`${schema.challenges.expiresAt} < ${Date.now()}`
+      )
+    );
+  const rows = await db
+    .select()
+    .from(schema.challenges)
+    .where(
+      and(
+        eq(schema.challenges.fromUserId, u.clerkId),
+        // Show pending + recently-resolved (for sender's "accepted" auto-redirect).
+        or(
+          eq(schema.challenges.status, "pending"),
+          and(
+            inArray(schema.challenges.status, ["accepted", "declined", "cancelled"]),
+            sql`${schema.challenges.createdAt} > ${Date.now() - 30 * 60_000}`
+          )
+        )
+      )
+    )
+    .orderBy(desc(schema.challenges.createdAt))
+    .limit(20);
+  const toIds = Array.from(new Set(rows.map((r) => r.toUserId)));
+  const toRows = toIds.length
+    ? await db
+        .select({ clerkId: schema.users.clerkId, username: schema.users.username })
+        .from(schema.users)
+        .where(inArray(schema.users.clerkId, toIds))
+    : [];
+  const nameById = new Map(toRows.map((r) => [r.clerkId, r.username]));
+  return c.json({
+    challenges: rows.map((r) => ({
+      ...r,
+      fromUsername: u.username,
+      toUsername: nameById.get(r.toUserId) || "",
+    })),
+  });
+});
+
+app.get("/challenges/:id", authMw, async (c) => {
+  const u = c.get("user");
+  const id = c.req.param("id");
+  const db = getDb(c.env.DB);
+  const ch = await db.query.challenges.findFirst({
+    where: eq(schema.challenges.id, id),
+  });
+  if (!ch) return c.json({ error: "not_found" }, 404);
+  if (ch.fromUserId !== u.clerkId && ch.toUserId !== u.clerkId)
+    return c.json({ error: "not_yours" }, 403);
+  const [from, to] = await Promise.all([
+    db.query.users.findFirst({ where: eq(schema.users.clerkId, ch.fromUserId) }),
+    db.query.users.findFirst({ where: eq(schema.users.clerkId, ch.toUserId) }),
+  ]);
+  return c.json({
+    ...ch,
+    fromUsername: from?.username || "",
+    toUsername: to?.username || "",
+  });
+});
+
+app.post("/challenges/:id/accept", authMw, async (c) => {
+  const u = c.get("user");
+  const id = c.req.param("id");
+  const db = getDb(c.env.DB);
+  const ch = await db.query.challenges.findFirst({
+    where: eq(schema.challenges.id, id),
+  });
+  if (!ch) return c.json({ error: "not_found" }, 404);
+  if (ch.toUserId !== u.clerkId) return c.json({ error: "not_recipient" }, 403);
+  if (ch.status !== "pending") {
+    if (ch.status === "accepted" && ch.gameId)
+      return c.json({ gameId: ch.gameId, alreadyAccepted: true });
+    return c.json({ error: ch.status }, 410);
+  }
+  if (ch.expiresAt < Date.now()) {
+    await db
+      .update(schema.challenges)
+      .set({ status: "expired" })
+      .where(eq(schema.challenges.id, id));
+    return c.json({ error: "expired" }, 410);
+  }
+
+  // Decide colors based on inviter's preference.
+  let whiteId: string;
+  let blackId: string;
+  if (ch.colorPref === "white") {
+    whiteId = ch.fromUserId;
+    blackId = ch.toUserId;
+  } else if (ch.colorPref === "black") {
+    whiteId = ch.toUserId;
+    blackId = ch.fromUserId;
+  } else if (Math.random() < 0.5) {
+    whiteId = ch.fromUserId;
+    blackId = ch.toUserId;
+  } else {
+    whiteId = ch.toUserId;
+    blackId = ch.fromUserId;
+  }
+
+  const [wu, bu] = await Promise.all([
+    db.query.users.findFirst({ where: eq(schema.users.clerkId, whiteId) }),
+    db.query.users.findFirst({ where: eq(schema.users.clerkId, blackId) }),
+  ]);
+  if (!wu || !bu) return c.json({ error: "user_missing" }, 500);
+
+  const bucket = bucketFor(ch.initialMs, ch.incrementMs);
+  const eloKey = eloKeyForBucket(bucket);
+  const gameId = nanoid(12);
+
+  // Atomically claim the challenge.
+  const claimed = await db
+    .update(schema.challenges)
+    .set({ status: "accepted", gameId })
+    .where(
+      and(eq(schema.challenges.id, id), eq(schema.challenges.status, "pending"))
+    )
+    .returning();
+  if (claimed.length === 0) {
+    const fresh = await db.query.challenges.findFirst({
+      where: eq(schema.challenges.id, id),
+    });
+    if (fresh?.gameId) return c.json({ gameId: fresh.gameId, alreadyAccepted: true });
+    return c.json({ error: "race" }, 409);
+  }
+
+  // Spawn GameRoom DO.
+  const stub = c.env.GAME_ROOM.get(c.env.GAME_ROOM.idFromName(gameId));
+  await stub.fetch("https://do/init", {
+    method: "POST",
+    body: JSON.stringify({
+      gameId,
+      whiteId,
+      blackId,
+      whiteUsername: wu.username,
+      blackUsername: bu.username,
+      whiteElo: wu[eloKey],
+      blackElo: bu[eloKey],
+      whiteGames: wu.gamesPlayed,
+      blackGames: bu.gamesPlayed,
+      initialMs: ch.initialMs,
+      incrementMs: ch.incrementMs,
+      bucket,
+    }),
+  });
+
+  // Notify the original sender so they can auto-redirect.
+  await pushNotification(db, ch.fromUserId, "challenge_accepted", {
+    challengeId: id,
+    fromUsername: wu.username, // sender's POV
+    toUsername: bu.username,
+    timeControl: ch.timeControl,
+    gameId,
+  });
+
+  return c.json({ gameId });
+});
+
+app.post("/challenges/:id/decline", authMw, async (c) => {
+  const u = c.get("user");
+  const id = c.req.param("id");
+  const db = getDb(c.env.DB);
+  const ch = await db.query.challenges.findFirst({
+    where: eq(schema.challenges.id, id),
+  });
+  if (!ch) return c.json({ error: "not_found" }, 404);
+  if (ch.toUserId !== u.clerkId) return c.json({ error: "not_recipient" }, 403);
+  if (ch.status !== "pending") return c.json({ ok: true, noop: true });
+  await db
+    .update(schema.challenges)
+    .set({ status: "declined" })
+    .where(eq(schema.challenges.id, id));
+  // Hydrate sender + recipient names for the notification payload.
+  const fromUser = await db.query.users.findFirst({
+    where: eq(schema.users.clerkId, ch.fromUserId),
+  });
+  await pushNotification(db, ch.fromUserId, "challenge_declined", {
+    challengeId: id,
+    fromUsername: fromUser?.username || "",
+    toUsername: u.username,
+    timeControl: ch.timeControl,
+  });
+  return c.json({ ok: true });
+});
+
+app.post("/challenges/:id/cancel", authMw, async (c) => {
+  const u = c.get("user");
+  const id = c.req.param("id");
+  const db = getDb(c.env.DB);
+  const ch = await db.query.challenges.findFirst({
+    where: eq(schema.challenges.id, id),
+  });
+  if (!ch) return c.json({ error: "not_found" }, 404);
+  if (ch.fromUserId !== u.clerkId) return c.json({ error: "not_sender" }, 403);
+  if (ch.status !== "pending") return c.json({ ok: true, noop: true });
+  await db
+    .update(schema.challenges)
+    .set({ status: "cancelled" })
+    .where(eq(schema.challenges.id, id));
+  // Tell the recipient the challenge went away so their inbox can clear it.
+  await pushNotification(db, ch.toUserId, "challenge_cancelled", {
+    challengeId: id,
+    fromUsername: u.username,
+    toUsername: "",
+    timeControl: ch.timeControl,
+  });
+  return c.json({ ok: true });
+});
+
+// ------- Notifications -------
+
+app.get("/me/notifications", authMw, async (c) => {
+  const u = c.get("user");
+  const db = getDb(c.env.DB);
+  const sinceParam = Number(c.req.query("since") || "0");
+  const limit = Math.min(50, Math.max(1, Number(c.req.query("limit") || "20")));
+  const cond =
+    sinceParam > 0
+      ? and(
+          eq(schema.notifications.userId, u.clerkId),
+          sql`${schema.notifications.createdAt} > ${sinceParam}`
+        )
+      : eq(schema.notifications.userId, u.clerkId);
+  const rows = await db
+    .select()
+    .from(schema.notifications)
+    .where(cond)
+    .orderBy(desc(schema.notifications.createdAt))
+    .limit(limit);
+  // Decode payload for clients.
+  const items = rows.map((r) => {
+    let parsed: Record<string, unknown> = {};
+    try {
+      parsed = JSON.parse(r.payload);
+    } catch {
+      // ignore — leave empty
+    }
+    return {
+      id: r.id,
+      kind: r.kind,
+      payload: parsed,
+      readAt: r.readAt,
+      createdAt: r.createdAt,
+    };
+  });
+  // Compute unread count (independent of since) so the bell badge stays right.
+  const unreadRows = await db
+    .select({ id: schema.notifications.id })
+    .from(schema.notifications)
+    .where(
+      and(
+        eq(schema.notifications.userId, u.clerkId),
+        isNull(schema.notifications.readAt)
+      )
+    );
+  return c.json({ items, unread: unreadRows.length });
+});
+
+app.post("/me/notifications/read-all", authMw, async (c) => {
+  const u = c.get("user");
+  const db = getDb(c.env.DB);
+  await db
+    .update(schema.notifications)
+    .set({ readAt: Date.now() })
+    .where(
+      and(
+        eq(schema.notifications.userId, u.clerkId),
+        isNull(schema.notifications.readAt)
+      )
+    );
+  return c.json({ ok: true });
+});
+
+app.post("/me/notifications/:id/read", authMw, async (c) => {
+  const u = c.get("user");
+  const id = c.req.param("id");
+  const db = getDb(c.env.DB);
+  await db
+    .update(schema.notifications)
+    .set({ readAt: Date.now() })
+    .where(
+      and(
+        eq(schema.notifications.id, id),
+        eq(schema.notifications.userId, u.clerkId)
+      )
+    );
+  return c.json({ ok: true });
+});
+
 // ------- WebSocket: matchmaking -------
 app.get("/ws/queue", async (c) => {
   const upgrade = c.req.header("Upgrade");
@@ -731,7 +1263,7 @@ app.get("/ws/queue", async (c) => {
   if (!payload) return c.text("unauthorized", 401);
 
   const tcId = c.req.query("tc") || "";
-  const tc = TIME_CONTROL_BY_ID[tcId];
+  const tc = resolveTimeControl(tcId);
   if (!tc) return c.text("bad time control", 400);
 
   // Hydrate user (lazy create)
@@ -742,7 +1274,7 @@ app.get("/ws/queue", async (c) => {
     where: eq(schema.users.clerkId, user.clerkId),
   });
   if (!u) return c.text("user missing", 500);
-  const elo = tc.bucket === "bullet" ? u.eloBullet : tc.bucket === "blitz" ? u.eloBlitz : u.eloRapid;
+  const elo = u[eloKeyForBucket(tc.bucket)];
 
   // Route to bucket DO
   const id = c.env.MATCHMAKING.idFromName(tc.bucket);

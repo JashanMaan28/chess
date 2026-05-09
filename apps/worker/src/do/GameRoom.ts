@@ -341,10 +341,12 @@ export class GameRoomDO implements DurableObject {
     if (turn !== role) return this.sendErr(ws, ERR.NOT_TURN, "not your turn");
 
     const now = Date.now();
-    // Deduct elapsed thinking time before applying the move.
-    const elapsed = now - this.game.lastMoveAt;
+    // Pregame: clocks are frozen until both players have made their first move
+    // (i.e. moves.length >= 2 entering this handler — moves 1 and 2 don't tick).
+    const pregame = this.game.moves.length < 2;
+    const elapsed = pregame ? 0 : now - this.game.lastMoveAt;
     const remaining = this.game.clocks[turn] - elapsed;
-    if (remaining <= 0) {
+    if (!pregame && remaining <= 0) {
       // Flag fall race — finalize as flag.
       return this.endByFlag(turn);
     }
@@ -357,8 +359,9 @@ export class GameRoomDO implements DurableObject {
     }
     if (!result) return this.sendErr(ws, ERR.ILLEGAL_MOVE, "illegal");
 
-    // Add increment AFTER move, on the mover's clock.
-    const newRemaining = remaining + this.game.incrementMs;
+    // Add increment AFTER move on the mover's clock — but skip during pregame
+    // (the player didn't actually use any time, so no compensating bonus).
+    const newRemaining = pregame ? this.game.clocks[turn] : remaining + this.game.incrementMs;
     this.game.clocks[turn] = newRemaining;
     this.game.lastMoveAt = now;
     this.game.fen = this.chess.fen();
@@ -444,8 +447,12 @@ export class GameRoomDO implements DurableObject {
   private async scheduleFlagAlarm() {
     if (!this.game || !this.chess || this.game.endedAt) return;
     const turn = this.chess.turn() as Color;
-    const flagAt = this.game.lastMoveAt + this.game.clocks[turn];
-    // If a player is disconnected, also consider abandonment alarm.
+    // Pregame (moves 1 + 2): clocks are frozen, so no flag alarm. Only an
+    // abandonment alarm can fire during this phase.
+    const pregame = this.game.moves.length < 2;
+    const flagAt = pregame
+      ? Number.POSITIVE_INFINITY
+      : this.game.lastMoveAt + this.game.clocks[turn];
     const grace = disconnectGraceMs(this.game.bucket);
     const dcSlot = this.game[turn === "w" ? "white" : "black"];
     const otherSlot = this.game[turn === "w" ? "black" : "white"];
@@ -454,11 +461,22 @@ export class GameRoomDO implements DurableObject {
     if (otherSlot.connected && !dcSlot.connected && dcSlot.lastDisconnectAt) {
       abandonAt = dcSlot.lastDisconnectAt + grace;
     }
-    let nextAt = flagAt;
+    let nextAt: number = flagAt;
     let type: "flag" | "abandon" = "flag";
     if (abandonAt !== null && abandonAt < nextAt) {
       nextAt = abandonAt;
       type = "abandon";
+    }
+    if (!Number.isFinite(nextAt)) {
+      // Pregame with no disconnected player → nothing to alarm on.
+      try {
+        await this.state.storage.deleteAlarm();
+      } catch {
+        // ignore
+      }
+      this.game.alarmType = null;
+      await this.persist();
+      return;
     }
     this.game.alarmType = type;
     await this.state.storage.setAlarm(nextAt);
@@ -626,11 +644,13 @@ export class GameRoomDO implements DurableObject {
     if (!this.game || !this.chess) {
       return { t: "error", code: ERR.NOT_FOUND, msg: "no game" };
     }
-    // Live-deduct current side's clock for accurate display.
+    // Live-deduct current side's clock for accurate display, but freeze during
+    // pregame (moves 1 + 2 — clocks don't tick until both players have moved).
     const now = Date.now();
     const turn = this.chess.turn() as Color;
     const clocks = { ...this.game.clocks };
-    if (!this.game.endedAt) {
+    const pregame = this.game.moves.length < 2;
+    if (!this.game.endedAt && !pregame) {
       const elapsed = now - this.game.lastMoveAt;
       clocks[turn] = Math.max(0, clocks[turn] - elapsed);
     }

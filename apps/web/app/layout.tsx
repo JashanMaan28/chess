@@ -4,6 +4,7 @@ import { Geist, JetBrains_Mono, Instrument_Serif } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SiteHeader } from "@/components/site-header";
 import { OnboardingGate } from "@/components/onboarding-gate";
+import { NotificationsProvider } from "@/lib/notifications";
 import { Toaster } from "sonner";
 import "./globals.css";
 
@@ -49,10 +50,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           className={`${geist.variable} ${mono.variable} ${serif.variable} font-sans antialiased min-h-screen flex flex-col`}
         >
           <ThemeProvider>
-            <OnboardingGate />
-            <SiteHeader />
-            <main className="flex-1 flex flex-col">{children}</main>
-            <Toaster position="bottom-right" />
+            <NotificationsProvider>
+              <OnboardingGate />
+              <SiteHeader />
+              <main className="flex-1 flex flex-col">{children}</main>
+              <Toaster position="bottom-right" />
+            </NotificationsProvider>
           </ThemeProvider>
         </body>
       </html>

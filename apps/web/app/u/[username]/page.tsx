@@ -4,6 +4,8 @@ import { API_URL } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ProfileActions } from "@/components/profile-actions";
 
+type ColorRecord = { wins: number; draws: number; losses: number; games: number };
+
 type Profile = {
   user: {
     username: string;
@@ -14,6 +16,9 @@ type Profile = {
     createdAt: number;
   };
   record: { wins: number; losses: number; draws: number };
+  byColor: { white: ColorRecord; black: ColorRecord };
+  activity: { days: number; oldestDay: number; counts: number[] };
+  sparklines: { bullet: number[]; blitz: number[]; rapid: number[] };
   recent: Array<{
     id: string;
     timeControl: string;
@@ -32,19 +37,10 @@ async function getProfile(username: string): Promise<Profile | null> {
 }
 
 const RATING_TILES = [
-  { key: "eloBullet", label: "Bullet" },
-  { key: "eloBlitz", label: "Blitz" },
-  { key: "eloRapid", label: "Rapid" },
+  { key: "eloBullet", label: "Bullet", spark: "bullet" },
+  { key: "eloBlitz", label: "Blitz", spark: "blitz" },
+  { key: "eloRapid", label: "Rapid", spark: "rapid" },
 ] as const;
-
-const SPARK_PATHS: Record<string, string> = {
-  Bullet:
-    "M0,30 L20,28 L40,32 L60,24 L80,26 L100,20 L120,22 L140,16 L160,18 L180,12 L200,14",
-  Blitz:
-    "M0,28 L20,30 L40,22 L60,26 L80,18 L100,22 L120,14 L140,18 L160,10 L180,14 L200,8",
-  Rapid:
-    "M0,18 L20,16 L40,14 L60,18 L80,12 L100,16 L120,10 L140,14 L160,18 L180,16 L200,20",
-};
 
 function shortMonthDay(ms: number): string {
   if (!ms) return "—";
@@ -60,6 +56,33 @@ function resultFor(g: Profile["recent"][number], me: string): "W" | "L" | "D" {
   return "D";
 }
 
+/**
+ * Build an SVG path from a series of rating values, normalized to the SVG box.
+ * Returns null when the series is too short to plot.
+ */
+function sparklinePath(values: number[], w = 200, h = 40, pad = 2): string | null {
+  if (values.length < 2) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const stepX = (w - pad * 2) / (values.length - 1);
+  const points = values.map((v, i) => {
+    const x = pad + stepX * i;
+    const y = h - pad - ((v - min) / range) * (h - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  return "M" + points.join(" L");
+}
+
+function colorRecordPercent(r: ColorRecord): { winPct: number; drawPct: number; lossPct: number } {
+  const total = Math.max(1, r.games);
+  return {
+    winPct: (r.wins / total) * 100,
+    drawPct: (r.draws / total) * 100,
+    lossPct: (r.losses / total) * 100,
+  };
+}
+
 export default async function ProfilePage({
   params,
 }: {
@@ -68,13 +91,26 @@ export default async function ProfilePage({
   const { username } = await params;
   const data = await getProfile(username);
   if (!data) return notFound();
-  const { user, record, recent } = data;
+  const { user, record, byColor, activity, sparklines, recent } = data;
 
   const memberSince = new Date(user.createdAt).getFullYear();
   const initial = user.username.slice(0, 2).toUpperCase();
 
+  // Activity heatmap layout.
+  const heatMax = Math.max(0, ...activity.counts);
+  const colorForCount = (n: number): string => {
+    if (n === 0) return "var(--bg-elev-2)";
+    if (heatMax <= 1) return "#94a566";
+    const t = n / heatMax;
+    if (t < 0.25) return "#dde2c8";
+    if (t < 0.5) return "#bcc798";
+    if (t < 0.75) return "#94a566";
+    return "#687d3a";
+  };
+  const totalGamesIn12w = activity.counts.reduce((a, b) => a + b, 0);
+
   return (
-    <div className="px-14 pt-9 pb-12 max-w-[1280px] mx-auto w-full">
+    <div className="px-6 sm:px-10 lg:px-14 pt-9 pb-12 max-w-[1280px] mx-auto w-full">
       {/* Hero */}
       <div className="flex items-end gap-6 mb-8 flex-wrap">
         <div
@@ -105,9 +141,13 @@ export default async function ProfilePage({
       </div>
 
       {/* Rating tiles */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         {RATING_TILES.map((t) => {
           const value = user[t.key];
+          const series = sparklines[t.spark];
+          const path = sparklinePath(series);
+          const trend =
+            series.length >= 2 ? series[series.length - 1]! - series[0]! : 0;
           return (
             <div
               key={t.key}
@@ -120,21 +160,35 @@ export default async function ProfilePage({
                   </div>
                   <div className="eyebrow mt-1.5">{t.label}</div>
                 </div>
+                <div
+                  className={`font-mono text-[12px] ${
+                    trend > 0
+                      ? "text-[var(--success)]"
+                      : trend < 0
+                        ? "text-[var(--danger)]"
+                        : "text-[var(--fg-muted)]"
+                  }`}
+                >
+                  {series.length < 2
+                    ? "—"
+                    : `${trend > 0 ? "+" : ""}${trend} · ${series.length}g`}
+                </div>
               </div>
-              <svg
-                width="100%"
-                height="40"
-                viewBox="0 0 200 40"
-                preserveAspectRatio="none"
-                className="mt-3 block"
-              >
-                <path
-                  d={SPARK_PATHS[t.label]}
-                  fill="none"
-                  stroke="var(--fg)"
-                  strokeWidth="1.5"
-                />
-              </svg>
+              {path ? (
+                <svg
+                  width="100%"
+                  height="40"
+                  viewBox="0 0 200 40"
+                  preserveAspectRatio="none"
+                  className="mt-3 block"
+                >
+                  <path d={path} fill="none" stroke="var(--fg)" strokeWidth="1.5" />
+                </svg>
+              ) : (
+                <div className="mt-3 h-[40px] flex items-center text-[12px] text-[var(--fg-muted)] font-mono">
+                  Play a few games to see your trend.
+                </div>
+              )}
             </div>
           );
         })}
@@ -200,12 +254,12 @@ export default async function ProfilePage({
 
         {/* Right column */}
         <div className="flex flex-col gap-5">
-          {/* Activity heatmap */}
+          {/* Activity heatmap (real data) */}
           <div className="rounded-[10px] border border-[var(--border)] bg-[var(--bg-elev)] p-5">
             <div className="flex items-center justify-between mb-3.5">
               <h3 className="text-[15px] font-medium tracking-tight">Activity · 12 weeks</h3>
               <span className="font-mono text-[11px] text-[var(--fg-muted)]">
-                {user.gamesPlayed} games
+                {totalGamesIn12w} games
               </span>
             </div>
             <div
@@ -216,34 +270,19 @@ export default async function ProfilePage({
                 gridAutoFlow: "column",
               }}
             >
-              {Array.from({ length: 84 }).map((_, i) => {
-                const v = Math.floor(Math.abs(Math.sin(i * 1.3)) * 5);
-                const colors = [
-                  "var(--bg-elev-2)",
-                  "#dde2c8",
-                  "#bcc798",
-                  "#94a566",
-                  "#687d3a",
-                ];
-                return (
-                  <div
-                    key={i}
-                    className="aspect-square rounded-[2px]"
-                    style={{ background: colors[v] }}
-                  />
-                );
-              })}
+              {activity.counts.map((n, i) => (
+                <div
+                  key={i}
+                  className="aspect-square rounded-[2px]"
+                  style={{ background: colorForCount(n) }}
+                  title={`${n} game${n === 1 ? "" : "s"}`}
+                />
+              ))}
             </div>
             <div className="flex items-center justify-between font-mono text-[10px] text-[var(--fg-muted)] mt-2">
               <span>Less</span>
               <div className="flex gap-[2px]">
-                {[
-                  "var(--bg-elev-2)",
-                  "#dde2c8",
-                  "#bcc798",
-                  "#94a566",
-                  "#687d3a",
-                ].map((c) => (
+                {["var(--bg-elev-2)", "#dde2c8", "#bcc798", "#94a566", "#687d3a"].map((c) => (
                   <div
                     key={c}
                     style={{ background: c }}
@@ -255,41 +294,75 @@ export default async function ProfilePage({
             </div>
           </div>
 
-          {/* Repertoire */}
+          {/* Performance by color (real data) */}
           <div className="rounded-[10px] border border-[var(--border)] bg-[var(--bg-elev)] p-5">
             <h3 className="text-[15px] font-medium tracking-tight mb-3.5">
-              Opening repertoire
+              Performance by color
             </h3>
-            <div className="flex flex-col gap-3">
-              {[
-                { role: "As White", name: "Italian Game", wr: "58%", pct: 0.58 },
-                { role: "As Black", name: "Sicilian Najdorf", wr: "49%", pct: 0.49 },
-                { role: "Vs 1.d4", name: "King's Indian", wr: "52%", pct: 0.52 },
-              ].map((r) => (
-                <div key={r.role} className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--fg-muted)]">
-                        {r.role}
+            {byColor.white.games + byColor.black.games === 0 ? (
+              <p className="text-[13px] text-[var(--fg-muted)]">
+                No finished games yet — play a few to see your record.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {(["white", "black"] as const).map((side) => {
+                  const r = byColor[side];
+                  const pct = colorRecordPercent(r);
+                  return (
+                    <div key={side} className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span
+                            aria-hidden
+                            className={`size-3 rounded-sm border ${
+                              side === "white"
+                                ? "bg-white border-[var(--border-strong)]"
+                                : "bg-[var(--fg)] border-transparent"
+                            }`}
+                          />
+                          <div>
+                            <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--fg-muted)]">
+                              As {side}
+                            </div>
+                            <div className="text-[13.5px] font-medium tracking-tight">
+                              {r.wins}W · {r.draws}D · {r.losses}L
+                            </div>
+                          </div>
+                        </div>
+                        <span className="font-mono text-[13px]">
+                          {r.games > 0
+                            ? `${Math.round((r.wins / r.games) * 100)}%`
+                            : "—"}
+                        </span>
                       </div>
-                      <div className="text-[13.5px] font-medium tracking-tight">
-                        {r.name}
+                      <div className="h-1.5 bg-[var(--bg-elev-2)] rounded-full overflow-hidden flex">
+                        <div
+                          className="h-full"
+                          style={{
+                            width: `${pct.winPct}%`,
+                            background: "var(--accent)",
+                          }}
+                        />
+                        <div
+                          className="h-full"
+                          style={{
+                            width: `${pct.drawPct}%`,
+                            background: "var(--fg-subtle)",
+                          }}
+                        />
+                        <div
+                          className="h-full"
+                          style={{
+                            width: `${pct.lossPct}%`,
+                            background: "var(--danger)",
+                          }}
+                        />
                       </div>
                     </div>
-                    <span className="font-mono text-[13px]">{r.wr}</span>
-                  </div>
-                  <div className="h-1 bg-[var(--bg-elev-2)] rounded-full overflow-hidden">
-                    <div
-                      className="h-full"
-                      style={{
-                        width: `${r.pct * 100}%`,
-                        background: "var(--accent)",
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -5,6 +5,7 @@ import { SignedIn, SignedOut, UserButton, SignInButton } from "@clerk/nextjs";
 import { ThemeSwitch } from "./theme-provider";
 import { Button } from "./ui/button";
 import { SearchDialog, SearchTrigger } from "./search-dialog";
+import { NotificationBell } from "./notification-bell";
 
 const links = [
   { href: "/", key: "play", label: "Play" },
@@ -64,6 +65,9 @@ export function SiteHeader() {
         <div className="ml-auto flex items-center gap-3">
           <SearchTrigger />
           <SearchDialog />
+          <SignedIn>
+            <NotificationBell />
+          </SignedIn>
           <ThemeSwitch />
           <SignedOut>
             <SignInButton>

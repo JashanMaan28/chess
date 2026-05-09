@@ -20,6 +20,14 @@ type Props = {
   captureSquares?: string[];
   /** Click handler — fires for any square. */
   onSquareClick?: (square: string) => void;
+  /**
+   * Approximate vertical pixels reserved for sibling chrome (player rows,
+   * clocks, status bar, scrubber, etc). Used to cap the board so the whole
+   * layout fits on smaller screens without scrolling. Defaults to ~220px.
+   */
+  reservedVh?: number;
+  /** Hard cap on rendered board side, defaults to 720. */
+  maxSize?: number;
 };
 
 const DOT = `radial-gradient(circle at center, rgba(105,125,58,0.45) 0 22%, transparent 24%)`;
@@ -45,9 +53,12 @@ export function Board({
   legalMoves,
   captureSquares,
   onSquareClick,
+  reservedVh = 220,
+  maxSize = 720,
 }: Props) {
-  // Track container width so the chessboard scales to its parent rather than
-  // the default ~560px. We update on window resize.
+  // We size the board to the smaller of: container width, viewport height
+  // minus reserved chrome, and the configured cap. This makes the layout fit
+  // small/short screens without overflowing — important on phones in portrait.
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [boardWidth, setBoardWidth] = React.useState<number>(0);
   React.useEffect(() => {
@@ -55,13 +66,23 @@ export function Board({
     if (!el) return;
     const measure = () => {
       const w = el.clientWidth;
-      if (w > 0) setBoardWidth(w);
+      if (w <= 0) return;
+      const vhCap =
+        typeof window !== "undefined" && window.innerHeight > 0
+          ? Math.max(240, window.innerHeight - reservedVh)
+          : Number.POSITIVE_INFINITY;
+      const next = Math.min(w, vhCap, maxSize);
+      setBoardWidth(next);
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [reservedVh, maxSize]);
 
   // Build the merged square-style map: caller styles first, overlays last.
   const styles = React.useMemo<Record<string, React.CSSProperties>>(() => {
@@ -78,33 +99,35 @@ export function Board({
   }, [customSquareStyles, selectedSquare, legalMoves, captureSquares]);
 
   return (
-    <div
-      ref={containerRef}
-      className="rounded-lg overflow-hidden border border-[var(--border)] bg-[var(--bg-elev)] w-full"
-    >
+    <div ref={containerRef} className="w-full flex justify-center">
       {boardWidth > 0 && (
-        <Chessboard
-          position={fen}
-          boardOrientation={orientation}
-          boardWidth={boardWidth}
-          arePiecesDraggable={arePiecesDraggable}
-          animationDuration={150}
-          customDarkSquareStyle={{ backgroundColor: "var(--board-dark)" }}
-          customLightSquareStyle={{ backgroundColor: "var(--board-light)" }}
-          customBoardStyle={{ borderRadius: 0 }}
-          customSquareStyles={styles}
-          onSquareClick={(square) => {
-            onSquareClick?.(square);
-          }}
-          onPieceDrop={(from, to, piece) => {
-            const isPawn = piece[1]?.toUpperCase() === "P";
-            const target = to[1];
-            if (isPawn && (target === "8" || target === "1")) {
-              return onMove(from, to, "q");
-            }
-            return onMove(from, to);
-          }}
-        />
+        <div
+          className="rounded-lg overflow-hidden border border-[var(--border)] bg-[var(--bg-elev)]"
+          style={{ width: boardWidth, height: boardWidth }}
+        >
+          <Chessboard
+            position={fen}
+            boardOrientation={orientation}
+            boardWidth={boardWidth}
+            arePiecesDraggable={arePiecesDraggable}
+            animationDuration={150}
+            customDarkSquareStyle={{ backgroundColor: "var(--board-dark)" }}
+            customLightSquareStyle={{ backgroundColor: "var(--board-light)" }}
+            customBoardStyle={{ borderRadius: 0 }}
+            customSquareStyles={styles}
+            onSquareClick={(square) => {
+              onSquareClick?.(square);
+            }}
+            onPieceDrop={(from, to, piece) => {
+              const isPawn = piece[1]?.toUpperCase() === "P";
+              const target = to[1];
+              if (isPawn && (target === "8" || target === "1")) {
+                return onMove(from, to, "q");
+              }
+              return onMove(from, to);
+            }}
+          />
+        </div>
       )}
     </div>
   );
