@@ -722,6 +722,15 @@ app.post("/friend/:code/accept", authMw, async (c) => {
   return c.json({ gameId });
 });
 
+// Forward the WS upgrade headers we care about. The bearer subprotocol must
+// pass through so the DO can echo it back in the 101 response.
+function wsForwardHeaders(c: any): Record<string, string> {
+  const headers: Record<string, string> = { Upgrade: "websocket" };
+  const proto = c.req.header("Sec-WebSocket-Protocol");
+  if (proto) headers["Sec-WebSocket-Protocol"] = proto;
+  return headers;
+}
+
 // ------- WebSocket: matchmaking -------
 app.get("/ws/queue", async (c) => {
   const upgrade = c.req.header("Upgrade");
@@ -755,9 +764,7 @@ app.get("/ws/queue", async (c) => {
   url.searchParams.set("tc", tc.id);
   url.searchParams.set("im", String(tc.initialMs));
   url.searchParams.set("inc", String(tc.incrementMs));
-  return stub.fetch(url.toString(), {
-    headers: { Upgrade: "websocket" },
-  });
+  return stub.fetch(url.toString(), { headers: wsForwardHeaders(c) });
 });
 
 // ------- WebSocket: in-game -------
@@ -765,15 +772,17 @@ app.get("/ws/game/:id", async (c) => {
   const upgrade = c.req.header("Upgrade");
   if (upgrade !== "websocket") return c.text("upgrade required", 426);
   const token = bearerToken(c.req.raw);
-  // Spectators allowed if no token, but with empty user id (read-only)
+  // Spectators allowed if no token, but with empty user id (read-only).
+  // If a token is provided but invalid, reject loudly — silently demoting an
+  // authed player to spectator detaches their player slot in the GameRoom and
+  // can result in an abandonment loss after the disconnect grace period.
   let userId = `spec_${Math.random().toString(36).slice(2, 10)}`;
   let username = "spectator";
   if (token) {
     const user = await authenticate(c.env, token);
-    if (user) {
-      userId = user.clerkId;
-      username = user.username;
-    }
+    if (!user) return c.text("unauthorized", 401);
+    userId = user.clerkId;
+    username = user.username;
   }
 
   const gameId = c.req.param("id");
@@ -782,7 +791,7 @@ app.get("/ws/game/:id", async (c) => {
   const url = new URL("https://do/ws");
   url.searchParams.set("uid", userId);
   url.searchParams.set("u", username);
-  return stub.fetch(url.toString(), { headers: { Upgrade: "websocket" } });
+  return stub.fetch(url.toString(), { headers: wsForwardHeaders(c) });
 });
 
 export default app;
