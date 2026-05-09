@@ -46,7 +46,11 @@ export function PageTransition() {
   const pathname = usePathname();
   const router = useRouter();
   const lastPath = useRef<string | null>(null);
-  const navInProgress = useRef(false);
+  // Destination of an in-flight click-initiated nav. When the pathname
+  // effect sees this exact path arrive, it knows the click handler already
+  // played a curtain for it and skips. A ref (not a timer) so it survives
+  // slow server-rendered routes like /u/[username].
+  const claimedPath = useRef<string | null>(null);
   const [token, setToken] = useState(0);
   const [reduced, setReduced] = useState(false);
 
@@ -71,7 +75,10 @@ export function PageTransition() {
     const prev = lastPath.current;
     lastPath.current = pathname;
 
-    if (navInProgress.current) return;
+    if (claimedPath.current === pathname) {
+      claimedPath.current = null;
+      return;
+    }
     if (shouldSkip(prev, pathname)) return;
     if (reduced) return;
     setToken((t) => t + 1);
@@ -114,14 +121,11 @@ export function PageTransition() {
       e.preventDefault();
       e.stopPropagation();
 
-      navInProgress.current = true;
+      claimedPath.current = url.pathname;
       setToken((t) => t + 1);
 
       const target = url.pathname + url.search + url.hash;
       window.setTimeout(() => router.push(target), NAV_FIRE_MS);
-      window.setTimeout(() => {
-        navInProgress.current = false;
-      }, TOTAL_DURATION_MS + 80);
     };
 
     document.addEventListener("click", handler, { capture: true });
