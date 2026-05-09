@@ -97,7 +97,7 @@ export default function FriendInvitePage() {
   };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
+    <div className="mx-auto max-w-2xl px-4 pt-10 lg:pt-14 pb-12 space-y-8">
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Challenge a friend</h1>
         <p className="mt-1 text-[var(--fg-muted)]">

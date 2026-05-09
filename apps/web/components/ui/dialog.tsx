@@ -34,25 +34,21 @@ export const DialogContent = React.forwardRef<
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
-      className="dialog-content fixed inset-0 z-50 grid place-items-center p-4 pointer-events-none focus:outline-none"
+      className={cn(
+        "dialog-content fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-elev)] p-6 shadow-2xl focus:outline-none",
+        className
+      )}
       {...props}
     >
-      <div
-        className={cn(
-          "dialog-panel relative pointer-events-auto w-full max-w-lg rounded-lg border border-[var(--border-strong)] bg-[var(--bg-elev)] p-6 shadow-2xl",
-          className
-        )}
-      >
-        {children}
-        {!hideClose && (
-          <DialogPrimitive.Close
-            className="absolute right-4 top-4 rounded-sm opacity-70 transition-[opacity,transform,background-color] duration-150 hover:opacity-100 hover:bg-[var(--bg-elev-2)] active:scale-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] p-1"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </DialogPrimitive.Close>
-        )}
-      </div>
+      {children}
+      {!hideClose && (
+        <DialogPrimitive.Close
+          className="absolute right-4 top-4 rounded-sm opacity-70 transition-[opacity,transform,background-color] duration-150 hover:opacity-100 hover:bg-[var(--bg-elev-2)] active:scale-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] p-1"
+          aria-label="Close"
+        >
+          <X className="h-4 w-4" />
+        </DialogPrimitive.Close>
+      )}
     </DialogPrimitive.Content>
   </DialogPortal>
 ));

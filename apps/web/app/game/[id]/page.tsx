@@ -7,6 +7,7 @@ import { Board } from "@/components/chess/board";
 import { Clock } from "@/components/chess/clock";
 import { MoveList } from "@/components/chess/move-list";
 import { ChatPanel } from "@/components/chess/chat-panel";
+import { CapturedPieces, captureSummary } from "@/components/chess/captured-pieces";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -345,6 +346,12 @@ export default function GamePage() {
   const bottomPlayer = bottomColor === "w" ? state.players.white : state.players.black;
   const isOver = state.result !== "*";
 
+  const { capturedByWhite, capturedByBlack, whiteAdvantage } = captureSummary(renderFen);
+  const advantageByColor: Record<Color, number> = {
+    w: Math.max(0, whiteAdvantage),
+    b: Math.max(0, -whiteAdvantage),
+  };
+
   // ----- Review scrub controls -----
   const totalPly = state.moves.length;
   const currentPly = selectedPly === -2 ? totalPly - 1 : selectedPly;
@@ -370,7 +377,13 @@ export default function GamePage() {
         {/* Board column */}
         <div className="flex flex-col gap-3 w-full max-w-full lg:max-w-[720px] mx-auto lg:mx-0 min-w-0">
           <div className="flex items-center justify-between gap-3">
-            <PlayerCard player={topPlayer} color={topColor} active={state.turn === topColor && !isOver} />
+            <PlayerCard
+              player={topPlayer}
+              color={topColor}
+              active={state.turn === topColor && !isOver}
+              captured={topColor === "w" ? capturedByWhite : capturedByBlack}
+              advantage={advantageByColor[topColor]}
+            />
             {!isOver && (
               <Clock
                 ms={clocks[topColor]}
@@ -395,6 +408,8 @@ export default function GamePage() {
               player={bottomPlayer}
               color={bottomColor}
               active={state.turn === bottomColor && !isOver}
+              captured={bottomColor === "w" ? capturedByWhite : capturedByBlack}
+              advantage={advantageByColor[bottomColor]}
             />
             {!isOver && (
               <Clock
@@ -658,19 +673,23 @@ function PlayerCard({
   player,
   color,
   active,
+  captured,
+  advantage,
 }: {
   player: { username: string; elo: number; connected: boolean } | null;
   color: Color;
   active: boolean;
+  captured?: { p: number; n: number; b: number; r: number; q: number };
+  advantage?: number;
 }) {
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3 min-w-0">
       <div
-        className={`h-8 w-8 rounded-md border-2 ${
+        className={`h-8 w-8 flex-shrink-0 rounded-md border-2 ${
           color === "w" ? "bg-white border-white/30" : "bg-black border-white/20"
         } ${active ? "ring-2 ring-[var(--accent)]" : ""}`}
       />
-      <div>
+      <div className="min-w-0">
         <div className="text-sm font-medium flex items-center gap-2">
           {player?.username || "—"}
           {player && (
@@ -682,8 +701,13 @@ function PlayerCard({
             />
           )}
         </div>
-        <div className="text-xs text-[var(--fg-muted)] font-mono">
-          {player?.elo ?? "—"}
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className="text-xs text-[var(--fg-muted)] font-mono">
+            {player?.elo ?? "—"}
+          </span>
+          {captured && (
+            <CapturedPieces pieces={captured} advantage={advantage ?? 0} />
+          )}
         </div>
       </div>
     </div>

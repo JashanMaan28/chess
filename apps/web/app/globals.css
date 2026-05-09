@@ -240,27 +240,34 @@ body {
   from { opacity: 1; }
   to   { opacity: 0; }
 }
-@keyframes dialog-panel-in {
+/* Animate via the individual `translate`/`scale` CSS properties so they
+   compose with Tailwind's `-translate-x-1/2 -translate-y-1/2` (which sets
+   the legacy `transform` property) rather than fight it for centering. */
+@keyframes dialog-content-in {
   from {
     opacity: 0;
-    transform: translateY(14px) scale(.965);
+    translate: 0 14px;
+    scale: 0.965;
     filter: blur(2px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    translate: 0 0;
+    scale: 1;
     filter: blur(0);
   }
 }
-@keyframes dialog-panel-out {
+@keyframes dialog-content-out {
   from {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    translate: 0 0;
+    scale: 1;
     filter: blur(0);
   }
   to {
     opacity: 0;
-    transform: translateY(6px) scale(.985);
+    translate: 0 6px;
+    scale: 0.985;
     filter: blur(1px);
   }
 }
@@ -275,12 +282,12 @@ body {
 .dialog-overlay[data-state="closed"] {
   animation: dialog-overlay-out .14s ease-in both;
 }
-.dialog-content[data-state="open"] .dialog-panel {
-  animation: dialog-panel-in .26s cubic-bezier(.16,1,.3,1) both;
-  will-change: transform, opacity;
+.dialog-content[data-state="open"] {
+  animation: dialog-content-in .26s cubic-bezier(.16,1,.3,1) both;
+  will-change: translate, scale, opacity;
 }
-.dialog-content[data-state="closed"] .dialog-panel {
-  animation: dialog-panel-out .14s ease-in both;
+.dialog-content[data-state="closed"] {
+  animation: dialog-content-out .14s ease-in both;
 }
 
 /* ----- Search dialog content stagger ----- */
@@ -348,7 +355,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .dialog-overlay[data-state],
-  .dialog-content[data-state] .dialog-panel,
+  .dialog-content[data-state],
   .search-dialog .search-icon,
   .search-section,
   .search-empty,
