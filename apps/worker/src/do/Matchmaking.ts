@@ -71,7 +71,15 @@ export class MatchmakingDO implements DurableObject {
       // Try immediate match, otherwise schedule periodic ticks.
       await this.tryPair();
       await this.scheduleTick();
-      return new Response(null, { status: 101, webSocket: client });
+      const respHeaders: Record<string, string> = {};
+      const offered = req.headers.get("Sec-WebSocket-Protocol");
+      if (offered) {
+        const parts = offered.split(",").map((s) => s.trim());
+        if (parts.includes("chess.bearer.v1")) {
+          respHeaders["Sec-WebSocket-Protocol"] = "chess.bearer.v1";
+        }
+      }
+      return new Response(null, { status: 101, webSocket: client, headers: respHeaders });
     }
     return new Response("not found", { status: 404 });
   }

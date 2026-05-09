@@ -125,7 +125,11 @@ export class GameRoomDO implements DurableObject {
       const role: ColorOrSpectator = this.roleFor(userId);
       this.state.acceptWebSocket(server, [`uid:${userId}`, `role:${role}`, `name:${username}`]);
       this.onConnect(userId, role);
-      return new Response(null, { status: 101, webSocket: client });
+      return new Response(null, {
+        status: 101,
+        webSocket: client,
+        headers: wsAcceptHeaders(req),
+      });
     }
 
     return new Response("not found", { status: 404 });
@@ -723,6 +727,21 @@ export class GameRoomDO implements DurableObject {
     if (!this.game) return;
     await this.state.storage.put("game", this.game);
   }
+}
+
+/**
+ * If the client offered the bearer subprotocol, the 101 response MUST select
+ * one of the offered values or browsers will fail the handshake. We only ever
+ * echo back the marker — never the token itself.
+ */
+function wsAcceptHeaders(req: Request): Record<string, string> {
+  const proto = req.headers.get("Sec-WebSocket-Protocol");
+  if (!proto) return {};
+  const parts = proto.split(",").map((s) => s.trim());
+  if (parts.includes("chess.bearer.v1")) {
+    return { "Sec-WebSocket-Protocol": "chess.bearer.v1" };
+  }
+  return {};
 }
 
 function cannotMate(fen: string, side: "w" | "b"): boolean {

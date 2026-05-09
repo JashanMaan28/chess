@@ -8,30 +8,51 @@ type Handlers = {
   onStatus?: (s: WSStatus) => void;
 };
 
+type GetToken = () => Promise<string | null>;
+
+// Marker subprotocol that pairs with the bearer JWT in the Sec-WebSocket-Protocol
+// header. The server echoes this marker back; the token never appears in URLs
+// or response headers, keeping it out of CDN access logs.
+const WS_BEARER_PROTOCOL = "chess.bearer.v1";
+
+function buildProtocols(token: string | null): string[] | undefined {
+  if (!token) return undefined;
+  return [WS_BEARER_PROTOCOL, token];
+}
+
 export class GameWS {
   private url: string;
-  private token: string | null;
+  private getToken: GetToken;
   private socket: WebSocket | null = null;
   private handlers: Handlers;
   private reconnectMs = 250;
   private closedByUser = false;
   private reconnectTimer: number | null = null;
+  // After this many consecutive auth-shaped failures, stop hammering the server.
+  private authFailures = 0;
+  private static MAX_AUTH_FAILURES = 3;
 
-  constructor(opts: { gameId: string; token: string | null; handlers: Handlers }) {
-    const u = new URL(`${WS_URL}/ws/game/${opts.gameId}`);
-    if (opts.token) u.searchParams.set("token", opts.token);
-    this.url = u.toString();
-    this.token = opts.token;
+  constructor(opts: { gameId: string; getToken: GetToken; handlers: Handlers }) {
+    this.url = `${WS_URL}/ws/game/${opts.gameId}`;
+    this.getToken = opts.getToken;
     this.handlers = opts.handlers;
   }
 
-  connect() {
+  async connect() {
     this.closedByUser = false;
     this.handlers.onStatus?.("connecting");
-    const ws = new WebSocket(this.url);
+    let token: string | null = null;
+    try {
+      token = await this.getToken();
+    } catch {
+      token = null;
+    }
+    if (this.closedByUser) return;
+    const ws = new WebSocket(this.url, buildProtocols(token));
     this.socket = ws;
     ws.onopen = () => {
       this.reconnectMs = 250;
+      this.authFailures = 0;
       this.handlers.onStatus?.("open");
       // Always sync immediately on (re)open
       this.send({ t: "sync" });
@@ -44,9 +65,17 @@ export class GameWS {
         // ignore
       }
     };
-    ws.onclose = () => {
+    ws.onclose = (e) => {
       this.handlers.onStatus?.("closed");
-      if (!this.closedByUser) this.scheduleReconnect();
+      if (this.closedByUser) return;
+      // 1006 with no prior open often signals a handshake-level rejection
+      // (e.g. the worker returned 401 for an invalid token). Cap retries so
+      // we don't spin if the user's session is genuinely gone.
+      if (e.code === 1006 && this.reconnectMs <= 250) {
+        this.authFailures += 1;
+        if (this.authFailures >= GameWS.MAX_AUTH_FAILURES) return;
+      }
+      this.scheduleReconnect();
     };
     ws.onerror = () => {
       try {
@@ -63,7 +92,7 @@ export class GameWS {
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
       this.reconnectMs = Math.min(4000, this.reconnectMs * 2);
-      this.connect();
+      void this.connect();
     }, delay);
   }
 
@@ -91,23 +120,32 @@ export class GameWS {
 export class QueueWS {
   private socket: WebSocket | null = null;
   private url: string;
+  private getToken: GetToken;
   private handlers: { onMessage: (msg: ServerMsg) => void; onStatus?: (s: WSStatus) => void };
+  private closedByUser = false;
 
   constructor(opts: {
     tcId: string;
-    token: string;
+    getToken: GetToken;
     handlers: { onMessage: (msg: ServerMsg) => void; onStatus?: (s: WSStatus) => void };
   }) {
     const u = new URL(`${WS_URL}/ws/queue`);
     u.searchParams.set("tc", opts.tcId);
-    u.searchParams.set("token", opts.token);
     this.url = u.toString();
+    this.getToken = opts.getToken;
     this.handlers = opts.handlers;
   }
 
-  connect() {
+  async connect() {
     this.handlers.onStatus?.("connecting");
-    const ws = new WebSocket(this.url);
+    let token: string | null = null;
+    try {
+      token = await this.getToken();
+    } catch {
+      token = null;
+    }
+    if (this.closedByUser) return;
+    const ws = new WebSocket(this.url, buildProtocols(token));
     this.socket = ws;
     ws.onopen = () => this.handlers.onStatus?.("open");
     ws.onmessage = (e) => {
@@ -128,6 +166,7 @@ export class QueueWS {
   }
 
   close() {
+    this.closedByUser = true;
     try {
       this.socket?.close();
     } catch {

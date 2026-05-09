@@ -76,9 +76,23 @@ async function pickUniqueUsername(env: Env, base: string): Promise<string> {
   return `${sanitized}_${Date.now().toString(36)}`;
 }
 
+/**
+ * Marker subprotocol used to carry a bearer token on WebSocket upgrades.
+ * Browsers can't set Authorization on WS, and URL query params land in CDN
+ * access logs, so the token rides as the second value of Sec-WebSocket-Protocol:
+ *   Sec-WebSocket-Protocol: chess.bearer.v1, <jwt>
+ * The server echoes back only the marker in its 101 response.
+ */
+export const WS_BEARER_PROTOCOL = "chess.bearer.v1";
+
 export function bearerToken(req: Request): string | null {
   const auth = req.headers.get("Authorization");
   if (auth?.startsWith("Bearer ")) return auth.slice(7);
-  const url = new URL(req.url);
-  return url.searchParams.get("token");
+  const proto = req.headers.get("Sec-WebSocket-Protocol");
+  if (proto) {
+    const parts = proto.split(",").map((s) => s.trim()).filter(Boolean);
+    const idx = parts.indexOf(WS_BEARER_PROTOCOL);
+    if (idx >= 0 && idx + 1 < parts.length) return parts[idx + 1] ?? null;
+  }
+  return null;
 }

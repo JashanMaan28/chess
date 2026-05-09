@@ -50,29 +50,26 @@ export default function GamePage() {
 
   React.useEffect(() => {
     if (!isLoaded) return;
-    let cancelled = false;
-    (async () => {
-      const token = await getToken().catch(() => null);
-      if (cancelled) return;
-      // Persist active game id for reconnection UX
-      try {
-        localStorage.setItem("activeGameId", id);
-      } catch {
-        // ignore
-      }
-      const ws = new GameWS({
-        gameId: id,
-        token,
-        handlers: {
-          onStatus: setStatus,
-          onMessage: (msg: ServerMsg) => handleServerMsg(msg),
-        },
-      });
-      wsRef.current = ws;
-      ws.connect();
-    })();
+    // Persist active game id for reconnection UX
+    try {
+      localStorage.setItem("activeGameId", id);
+    } catch {
+      // ignore
+    }
+    // Pass getToken through so the WS layer can fetch a fresh JWT on every
+    // (re)connect — Clerk handles caching/refresh internally, so a stale token
+    // never demotes a player to spectator mid-game.
+    const ws = new GameWS({
+      gameId: id,
+      getToken: () => getToken().catch(() => null),
+      handlers: {
+        onStatus: setStatus,
+        onMessage: (msg: ServerMsg) => handleServerMsg(msg),
+      },
+    });
+    wsRef.current = ws;
+    void ws.connect();
     return () => {
-      cancelled = true;
       wsRef.current?.close();
     };
   }, [id, isLoaded, getToken]);

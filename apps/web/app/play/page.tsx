@@ -116,7 +116,7 @@ function PlayPageInner() {
       startedAt.current = Date.now();
       const ws = new QueueWS({
         tcId,
-        token,
+        getToken: () => getToken().catch(() => null),
         handlers: {
           onMessage: (msg: ServerMsg) => {
             if (msg.t === "queued") setQueueSize(msg.size);
@@ -130,7 +130,7 @@ function PlayPageInner() {
         },
       });
       wsRef.current = ws;
-      ws.connect();
+      void ws.connect();
     },
     [getToken, queueing, router]
   );
