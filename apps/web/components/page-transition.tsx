@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 const SKIP_PATHS = ["/onboarding", "/sign-in", "/sign-up"];
@@ -27,9 +27,26 @@ const EASE: [number, number, number, number] = [0.65, 0, 0.35, 1];
 const T_COVER_END = COVER / PANEL_DURATION;
 const T_HOLD_END = (COVER + HOLD) / PANEL_DURATION;
 
+// When all five panels are simultaneously covering the viewport. The last
+// panel hits full cover at PANEL_STAGGER*(N-1) + COVER ≈ 0.59s, and panel 0
+// starts uncovering at COVER + HOLD = 0.7s. Routing during this window
+// keeps the new page hidden under the curtain.
+const NAV_FIRE_MS = Math.round(
+  (PANEL_STAGGER * (PANEL_COUNT - 1) + COVER + 0.02) * 1000
+);
+
+function shouldSkip(from: string, to: string): boolean {
+  return (
+    SKIP_PATHS.some((p) => from.startsWith(p)) ||
+    SKIP_PATHS.some((p) => to.startsWith(p))
+  );
+}
+
 export function PageTransition() {
   const pathname = usePathname();
+  const router = useRouter();
   const lastPath = useRef<string | null>(null);
+  const navInProgress = useRef(false);
   const [token, setToken] = useState(0);
   const [reduced, setReduced] = useState(false);
 
@@ -41,6 +58,9 @@ export function PageTransition() {
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
+  // Fallback for navigations not initiated by a click (router.replace,
+  // back/forward, programmatic redirects). The curtain still plays, but it
+  // overlays after the navigation rather than gating it.
   useEffect(() => {
     if (lastPath.current === null) {
       lastPath.current = pathname;
@@ -51,15 +71,63 @@ export function PageTransition() {
     const prev = lastPath.current;
     lastPath.current = pathname;
 
-    if (
-      SKIP_PATHS.some((p) => pathname.startsWith(p)) ||
-      SKIP_PATHS.some((p) => prev.startsWith(p))
-    ) {
-      return;
-    }
+    if (navInProgress.current) return;
+    if (shouldSkip(prev, pathname)) return;
     if (reduced) return;
     setToken((t) => t + 1);
   }, [pathname, reduced]);
+
+  // Intercept link clicks so the curtain plays *before* the route swap,
+  // not concurrently with it. Without this, Next.js routes synchronously
+  // and the new page paints for a frame before the curtain starts.
+  useEffect(() => {
+    if (reduced) return;
+
+    const handler = (e: MouseEvent) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (e.button !== 0) return;
+      if (e.defaultPrevented) return;
+
+      const a = (e.target as HTMLElement | null)?.closest("a");
+      if (!a) return;
+      if (a.getAttribute("target") === "_blank") return;
+      if (a.hasAttribute("download")) return;
+
+      const href = a.getAttribute("href");
+      if (!href || href.startsWith("#") || href.startsWith("mailto:")) return;
+
+      let url: URL;
+      try {
+        url = new URL(a.href, window.location.href);
+      } catch {
+        return;
+      }
+      if (url.origin !== window.location.origin) return;
+      if (url.pathname === window.location.pathname) return;
+      if (shouldSkip(window.location.pathname, url.pathname)) return;
+
+      // Capture-phase + stopPropagation is required: Next.js Link attaches
+      // its click handler via React's delegated bubble phase and unconditionally
+      // calls preventDefault + navigates. If we only preventDefault here, Link
+      // still routes immediately. We have to stop the event before it reaches
+      // React's listener so we own the navigation.
+      e.preventDefault();
+      e.stopPropagation();
+
+      navInProgress.current = true;
+      setToken((t) => t + 1);
+
+      const target = url.pathname + url.search + url.hash;
+      window.setTimeout(() => router.push(target), NAV_FIRE_MS);
+      window.setTimeout(() => {
+        navInProgress.current = false;
+      }, TOTAL_DURATION_MS + 80);
+    };
+
+    document.addEventListener("click", handler, { capture: true });
+    return () =>
+      document.removeEventListener("click", handler, { capture: true });
+  }, [router, reduced]);
 
   if (token === 0) return null;
   return <Curtain key={token} onDone={() => setToken(0)} />;
