@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { Dialog, DialogContent } from "./ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "./ui/dialog";
 import { api } from "@/lib/api";
 
 type UserHit = { username: string; eloBlitz: number };
@@ -290,9 +290,19 @@ export function SearchDialog() {
         if (!o) setQ("");
       }}
     >
-      <DialogContent className="p-0 max-w-[640px] overflow-hidden">
+      <DialogContent
+        hideClose
+        className="search-dialog p-0 max-w-[640px] overflow-hidden"
+      >
+        <DialogTitle className="sr-only">Search</DialogTitle>
+        <DialogDescription className="sr-only">
+          Search for players, openings (by name or ECO), or puzzle themes.
+        </DialogDescription>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border)]">
-          <span aria-hidden className="text-[15px] text-[var(--fg-muted)]">
+          <span
+            aria-hidden
+            className="search-icon text-[15px] text-[var(--fg-muted)]"
+          >
             {"⌕"}
           </span>
           <input
@@ -301,25 +311,28 @@ export function SearchDialog() {
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKey}
             placeholder="Players, openings, puzzle themes…"
-            className="flex-1 bg-transparent outline-none text-[14px]"
+            className="flex-1 bg-transparent outline-none text-[14px] caret-[var(--accent)]"
           />
-          <kbd className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-elev-2)] text-[var(--fg-muted)]">
+          <kbd
+            onClick={() => setOpen(false)}
+            className="search-esc font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-elev-2)] text-[var(--fg-muted)] cursor-pointer select-none transition-[background-color,color,transform] duration-150 hover:bg-[var(--border)] hover:text-[var(--fg)] active:scale-90"
+          >
             Esc
           </kbd>
         </div>
 
         <div className="max-h-[420px] overflow-y-auto">
           {q.trim() === "" ? (
-            <div className="p-5 text-[13px] text-[var(--fg-muted)]">
+            <div className="search-empty p-5 text-[13px] text-[var(--fg-muted)]">
               Search for players, openings (by name or ECO), or puzzle themes.
             </div>
           ) : flatList.length === 0 ? (
-            <div className="p-5 text-[13px] text-[var(--fg-muted)]">
+            <div className="search-empty p-5 text-[13px] text-[var(--fg-muted)]">
               No matches.
             </div>
           ) : (
             sections.map((sec) => (
-              <div key={sec.label} className="py-1">
+              <div key={sec.label} className="search-section py-1">
                 <div className="px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--fg-muted)]">
                   {sec.label}
                 </div>
@@ -336,8 +349,8 @@ export function SearchDialog() {
                         setOpen(false);
                         setQ("");
                       }}
-                      className="w-full text-left px-4 py-2"
-                      style={{ background: on ? "var(--bg-elev-2)" : "transparent" }}
+                      className="search-row w-full text-left px-4 py-2 transition-[background-color,transform] duration-150 active:scale-[0.985]"
+                      data-active={on || undefined}
                     >
                       {item.el}
                     </button>
@@ -372,7 +385,7 @@ export function SearchTrigger() {
           new KeyboardEvent("keydown", { key: "k", metaKey: true })
         );
       }}
-      className="hidden lg:flex items-center gap-2 px-3 py-1.5 border border-[var(--border)] rounded-md bg-[var(--bg-elev)] text-[12.5px] text-[var(--fg-muted)] w-[220px] hover:border-[var(--border-strong)] transition-colors"
+      className="hidden lg:flex items-center gap-2 px-3 py-1.5 border border-[var(--border)] rounded-md bg-[var(--bg-elev)] text-[12.5px] text-[var(--fg-muted)] w-[220px] hover:border-[var(--border-strong)] hover:text-[color:var(--ink-2)] transition-[border-color,color,background-color,transform,box-shadow] duration-150 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
     >
       <span aria-hidden className="text-[13px]">
         {"⌕"}

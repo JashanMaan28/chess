@@ -176,17 +176,31 @@ body {
   border-radius: 10px;
   background: var(--bg-elev);
   cursor: pointer;
-  transition: transform .15s, box-shadow .15s, border-color .15s;
+  transition: transform .18s cubic-bezier(.16,1,.3,1),
+              box-shadow .18s ease,
+              border-color .18s ease,
+              background-color .18s ease;
   text-align: left;
+  will-change: transform;
 }
 .qp-card:hover {
   border-color: var(--fg);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
+.qp-card:active {
+  transform: translateY(0) scale(.985);
+  transition-duration: 80ms;
+  box-shadow: var(--shadow-sm);
+}
 .qp-card[data-active="true"] {
   border-color: var(--accent);
   box-shadow: var(--shadow-glow);
+}
+@media (prefers-reduced-motion: reduce) {
+  .qp-card,
+  .qp-card:hover,
+  .qp-card:active { transform: none; }
 }
 
 /* Tabular numbers for clocks / stats */
@@ -215,6 +229,133 @@ body {
   background-size: 48px 48px;
   background-position: -1px -1px;
   mask-image: radial-gradient(ellipse 60% 60% at 50% 35%, black 30%, transparent 80%);
+}
+
+/* ----- Dialog enter/exit ----- */
+@keyframes dialog-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes dialog-overlay-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes dialog-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(.965);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+@keyframes dialog-panel-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(.985);
+    filter: blur(1px);
+  }
+}
+
+.dialog-overlay {
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+}
+.dialog-overlay[data-state="open"] {
+  animation: dialog-overlay-in .18s cubic-bezier(.16,1,.3,1) both;
+}
+.dialog-overlay[data-state="closed"] {
+  animation: dialog-overlay-out .14s ease-in both;
+}
+.dialog-content[data-state="open"] .dialog-panel {
+  animation: dialog-panel-in .26s cubic-bezier(.16,1,.3,1) both;
+  will-change: transform, opacity;
+}
+.dialog-content[data-state="closed"] .dialog-panel {
+  animation: dialog-panel-out .14s ease-in both;
+}
+
+/* ----- Search dialog content stagger ----- */
+@keyframes search-icon-in {
+  from { opacity: 0; transform: scale(.4) rotate(-30deg); }
+  to   { opacity: 1; transform: scale(1) rotate(0); }
+}
+@keyframes search-section-in {
+  from { opacity: 0; transform: translate3d(0, 4px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@keyframes search-empty-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.search-dialog .search-icon {
+  animation: search-icon-in .35s cubic-bezier(.16,1,.3,1) .06s both;
+}
+.search-dialog input::placeholder {
+  transition: opacity .2s ease;
+}
+.search-dialog input:focus::placeholder {
+  opacity: .55;
+}
+.search-section {
+  animation: search-section-in .22s cubic-bezier(.16,1,.3,1) both;
+}
+.search-empty {
+  animation: search-empty-in .2s ease both;
+}
+.search-row {
+  position: relative;
+}
+.search-row[data-active] {
+  background: var(--bg-elev-2);
+}
+.search-row[data-active]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: search-row-marker-in .16s cubic-bezier(.16,1,.3,1) both;
+}
+@keyframes search-row-marker-in {
+  from { opacity: 0; transform: scaleY(.4); }
+  to   { opacity: 1; transform: scaleY(1); }
+}
+
+/* ----- Generic press utility ----- */
+.press {
+  transition: transform .15s cubic-bezier(.16,1,.3,1),
+              background-color .15s ease,
+              border-color .15s ease,
+              box-shadow .15s ease;
+  will-change: transform;
+}
+.press:active {
+  transform: scale(.97);
+  transition-duration: 75ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog-overlay[data-state],
+  .dialog-content[data-state] .dialog-panel,
+  .search-dialog .search-icon,
+  .search-section,
+  .search-empty,
+  .search-row[data-active]::before {
+    animation: none !important;
+  }
+  .press:active { transform: none; }
 }
 
 /* Onboarding step transitions */

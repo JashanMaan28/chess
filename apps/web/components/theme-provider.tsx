@@ -65,16 +65,15 @@ export function ThemeSwitch() {
     <button
       type="button"
       onClick={() => setTheme(next)}
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
+      onFocus={onEnter}
+      onBlur={onLeave}
       title={`Switch to ${next}`}
       aria-label={`Switch theme (currently ${theme}, click for ${next})`}
-      className="grid place-items-center size-9 rounded-md border border-[var(--border)] hover:border-[var(--fg)] text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors"
+      className="grid place-items-center size-9 rounded-md border border-[var(--border)] hover:border-[var(--fg)] text-[var(--fg-muted)] hover:text-[var(--fg)] transition-[border-color,color,transform] duration-150 active:scale-[0.92] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
     >
-      <ContrastIcon
-        ref={iconRef}
-        size={18}
-        onMouseEnter={onEnter}
-        onMouseLeave={onLeave}
-      />
+      <ContrastIcon ref={iconRef} size={18} />
     </button>
   );
 }

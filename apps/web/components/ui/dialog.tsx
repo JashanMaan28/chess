@@ -15,33 +15,44 @@ export const DialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn(
-      "fixed inset-0 z-50 bg-black/70 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out",
-      className
-    )}
+    className={cn("dialog-overlay fixed inset-0 z-50", className)}
     {...props}
   />
 ));
 DialogOverlay.displayName = "DialogOverlay";
 
+interface DialogContentProps
+  extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {
+  hideClose?: boolean;
+}
+
 export const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  DialogContentProps
+>(({ className, children, hideClose, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
-      className={cn(
-        "fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-elev)] p-6 shadow-2xl",
-        className
-      )}
+      className="dialog-content fixed inset-0 z-50 grid place-items-center p-4 pointer-events-none focus:outline-none"
       {...props}
     >
-      {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none">
-        <X className="h-4 w-4" />
-      </DialogPrimitive.Close>
+      <div
+        className={cn(
+          "dialog-panel relative pointer-events-auto w-full max-w-lg rounded-lg border border-[var(--border-strong)] bg-[var(--bg-elev)] p-6 shadow-2xl",
+          className
+        )}
+      >
+        {children}
+        {!hideClose && (
+          <DialogPrimitive.Close
+            className="absolute right-4 top-4 rounded-sm opacity-70 transition-[opacity,transform,background-color] duration-150 hover:opacity-100 hover:bg-[var(--bg-elev-2)] active:scale-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] p-1"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </DialogPrimitive.Close>
+        )}
+      </div>
     </DialogPrimitive.Content>
   </DialogPortal>
 ));
