@@ -33,6 +33,7 @@ export default function GamePage() {
   const [status, setStatus] = React.useState<"connecting" | "open" | "closed">("connecting");
   const [selectedPly, setSelectedPly] = React.useState<number>(-2); // -2 = follow live
   const [selectedSquare, setSelectedSquare] = React.useState<string | null>(null);
+  const [pendingPromotion, setPendingPromotion] = React.useState<{ from: string; to: string } | null>(null);
   const [endDialogOpen, setEndDialogOpen] = React.useState(false);
   const [endInfo, setEndInfo] = React.useState<{
     result: string;
@@ -276,6 +277,12 @@ export default function GamePage() {
 
       // Click-on-target → submit move (only when it's the user's turn).
       if (selectedSquare && legalMoves.includes(sq) && !reviewing) {
+        const mover = c.get(selectedSquare as never) as { color: "w" | "b"; type: string } | null;
+        if (mover?.type === "p" && (sq[1] === "8" || sq[1] === "1")) {
+          setPendingPromotion({ from: selectedSquare, to: sq });
+          setSelectedSquare(null);
+          return;
+        }
         const ok = tryMove(selectedSquare, sq);
         setSelectedSquare(null);
         if (!ok) return;
@@ -298,6 +305,7 @@ export default function GamePage() {
   // Clear selection if the displayed position changes (e.g. opponent moved).
   React.useEffect(() => {
     setSelectedSquare(null);
+    setPendingPromotion(null);
   }, [renderFen]);
 
   // Keyboard scrubbing in review mode.
@@ -529,6 +537,17 @@ export default function GamePage() {
         </div>
       </div>
 
+      <PromotionDialog
+        pending={pendingPromotion}
+        color={state.you === "w" || state.you === "b" ? state.you : "w"}
+        onPick={(promo) => {
+          if (!pendingPromotion) return;
+          tryMove(pendingPromotion.from, pendingPromotion.to, promo);
+          setPendingPromotion(null);
+        }}
+        onCancel={() => setPendingPromotion(null)}
+      />
+
       <Dialog open={endDialogOpen} onOpenChange={setEndDialogOpen}>
         <DialogContent>
           <DialogTitle>
@@ -585,6 +604,51 @@ export default function GamePage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function PromotionDialog({
+  pending,
+  color,
+  onPick,
+  onCancel,
+}: {
+  pending: { from: string; to: string } | null;
+  color: Color;
+  onPick: (promo: "q" | "r" | "b" | "n") => void;
+  onCancel: () => void;
+}) {
+  const glyphs: Record<"q" | "r" | "b" | "n", { w: string; b: string; label: string }> = {
+    q: { w: "♕", b: "♛", label: "Queen" },
+    r: { w: "♖", b: "♜", label: "Rook" },
+    b: { w: "♗", b: "♝", label: "Bishop" },
+    n: { w: "♘", b: "♞", label: "Knight" },
+  };
+  return (
+    <Dialog
+      open={!!pending}
+      onOpenChange={(open) => {
+        if (!open) onCancel();
+      }}
+    >
+      <DialogContent className="max-w-sm">
+        <DialogTitle>Choose promotion</DialogTitle>
+        <DialogDescription>Pick a piece to promote your pawn to.</DialogDescription>
+        <div className="mt-4 grid grid-cols-4 gap-2">
+          {(["q", "r", "b", "n"] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onPick(p)}
+              aria-label={glyphs[p].label}
+              className="aspect-square rounded-md border border-[var(--border)] bg-[var(--bg-elev-2)] hover:bg-[var(--bg-elev)] hover:border-[var(--accent)] transition-[background-color,border-color,transform] active:scale-95 flex items-center justify-center text-4xl leading-none"
+            >
+              <span>{glyphs[p][color]}</span>
+            </button>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

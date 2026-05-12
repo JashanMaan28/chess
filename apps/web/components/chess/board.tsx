@@ -84,6 +84,11 @@ export function Board({
     };
   }, [reservedVh, maxSize]);
 
+  // True for the brief moment between picking a promotion piece in the
+  // library's built-in dialog and the resulting onPieceDrop echo. Lets us
+  // accept that echo without sending the move a second time.
+  const skipNextDrop = React.useRef(false);
+
   // Build the merged square-style map: caller styles first, overlays last.
   const styles = React.useMemo<Record<string, React.CSSProperties>>(() => {
     const out: Record<string, React.CSSProperties> = { ...(customSquareStyles ?? {}) };
@@ -118,13 +123,19 @@ export function Board({
             onSquareClick={(square) => {
               onSquareClick?.(square);
             }}
-            onPieceDrop={(from, to, piece) => {
-              const isPawn = piece[1]?.toUpperCase() === "P";
-              const target = to[1];
-              if (isPawn && (target === "8" || target === "1")) {
-                return onMove(from, to, "q");
+            onPieceDrop={(from, to) => {
+              if (skipNextDrop.current) {
+                skipNextDrop.current = false;
+                return true;
               }
               return onMove(from, to);
+            }}
+            onPromotionPieceSelect={(piece, from, to) => {
+              if (!piece || !from || !to) return false;
+              const promo = piece[1]?.toLowerCase() as "q" | "r" | "b" | "n";
+              const ok = onMove(from, to, promo);
+              if (ok) skipNextDrop.current = true;
+              return ok;
             }}
           />
         </div>
